@@ -1,0 +1,9 @@
+{
+  "name": "proligview-ppi",
+  "version": "1.0.1",
+  "private": true,
+  "description": "ProLigView — 蛋白互作 3D 结构可视化与互作评估套件（PPI 分析 / 结构叠加 / 差异比对）",
+  "scripts": {
+    "dev": "node dev-server.js"
+  }
+}
