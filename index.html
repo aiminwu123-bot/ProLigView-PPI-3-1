@@ -194,6 +194,7 @@ input[type="text"]{width:100%}
       <div class="threshold-row"><span class="tname">|cosθ|</span><input class="tval" id="pp-cos-min-ppi" type="number" step="0.1" value="0.4" style="width:38px">-<input class="tval" id="pp-cos-max-ppi" type="number" step="0.1" value="0.9" style="width:38px"></div>
       <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#38bdf8;color:#38bdf8">π-Cat</span></span><i id="iPC-ppi" class="toggle on"></i></div>
       <div class="threshold-row"><span class="tname">距离 ≤</span><input class="tval" id="pc-dist-ppi" type="number" step="0.1" value="5.0"><span class="tunit">Å</span></div>
+      <div class="threshold-row"><span class="tname">法线夹角 ≤</span><input class="tval" id="pc-angle-ppi" type="number" step="5" value="30"><span class="tunit">°</span></div>
       <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#ef4444;color:#ef4444">S-S</span></span><i id="iSS-ppi" class="toggle on"></i></div>
       <div class="threshold-row"><span class="tname">Sγ 距 ≤</span><input class="tval" id="ss-dist-ppi" type="number" step="0.05" value="2.5"><span class="tunit">Å</span></div>
       <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#06b6d4;color:#06b6d4">X-Bond</span></span><i id="iXB-ppi" class="toggle on"></i></div>
@@ -201,7 +202,7 @@ input[type="text"]{width:100%}
       <div class="threshold-row"><span class="tname">C-X···O ≥</span><input class="tval" id="xb-angle-ppi" type="number" step="5" value="140"><span class="tunit">°</span></div>
       <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#c084fc;color:#c084fc">vdW</span></span><i id="iVW-ppi" class="toggle on"></i></div>
       <div class="threshold-row"><span class="tname">缓冲 ≤</span><input class="tval" id="vw-buffer-ppi" type="number" step="0.1" value="0.5"><span class="tunit">Å</span></div>
-      <div class="criteria"><b>评判标准参考</b><br>• 氢键：D···A≤3.5Å，角≥120°<br>• 盐桥：电荷相反基团≤4.0Å<br>• 疏水：Cβ间距≤5.0Å<br>• π-π：环心距3.3-6.0Å，|cosθ|0.4-0.9<br>• π-Cation：法线方向，≤5.0Å<br>• 二硫键：Sγ~2.0-2.5Å<br>• 卤键：C-X···O≥140°，≤3.5Å<br>• vdW：≤vdW半径和+缓冲</div>
+      <div class="criteria"><b>评判标准参考</b><br>• 氢键：D···A≤3.5Å，角≥120°（无氢结构按 D···A 距离近似）<br>• 盐桥：电荷相反基团≤4.0Å<br>• 疏水：Cβ间距≤5.0Å<br>• π-π：环心距3.3-6.0Å，|cosθ|0.4-0.9<br>• π-Cation：法线方向，≤5.0Å<br>• 二硫键：Sγ~2.0-2.5Å<br>• 卤键：C-X···O≥140°，≤3.5Å<br>• vdW：≤vdW半径和+缓冲</div>
     </div>
   </div>
   <div class="panel">
@@ -409,6 +410,7 @@ const dot = (a,b) => a.x*b.x + a.y*b.y + a.z*b.z;
 const centroid = arr => { const c={x:0,y:0,z:0}; arr.forEach(a=>{c.x+=a.x;c.y+=a.y;c.z+=a.z;}); const n=arr.length||1; return {x:c.x/n,y:c.y/n,z:c.z/n}; };
 const angle3pts = (a,b,c) => { const ba=sub(a,b), bc=sub(c,b); return Math.acos(Math.max(-1,Math.min(1,dot(ba,bc)/(Math.hypot(ba.x,ba.y,ba.z)*Math.hypot(bc.x,bc.y,bc.z)))))*180/Math.PI; };
 const on = id => $(id) && $(id).classList.contains('on');
+const num = (id, def) => { const el = $(id); const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : def; };
 
 const HNAME = /^\s*\d*\s*[HD]/i;
 function isHydrogen(a){ const el=(a.elem||'').toUpperCase(); if(el==='H'||el==='D') return true; const nm=(a.atom||a.name||'').trim(); return HNAME.test(nm) && !/^HG|^HE|^HF|^HO|^HS/i.test(nm.replace(/^\d+/,'')); }
@@ -487,8 +489,9 @@ function switchTab(tab){
   currentTab = tab;
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.toggle('active', el.dataset.tab===tab));
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.toggle('active', el.id==='tab-'+tab));
-  // 清除viewer并重新渲染当前标签
-  viewer3d.clear();
+  // 不用 viewer3d.clear()（会把模型删掉导致无法重渲染）；改为隐藏所有模型再渲染当前标签
+  viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
+  [ppiModel, alignModelWT, alignModelMut, diffModelWT, diffModelMut].forEach(m=>{ if(m) viewer3d.setStyle({model:m},{}); });
   if(tab==='ppi') renderPPI();
   else if(tab==='align') renderAlign();
   else if(tab==='diff') renderDiff();
@@ -527,7 +530,6 @@ function getCations(atoms){
 }
 
 // 通用互作检测引擎
-detectPPI=detectPPI||function(){};
 function detectPPI(model, proteinChains, partnerChains) {
   const ixns = [];
   if(!model || !proteinChains.length || !partnerChains.length) return ixns;
@@ -546,16 +548,22 @@ function detectPPI(model, proteinChains, partnerChains) {
 
   // 氢键
   if(on('iHB-ppi')||on('iHB-diff')){
-    const dmax=+(currentTab==='ppi'?$('hb-dist-ppi').value:$('hb-dist-ppi').value); // use ppi thresholds for diff too
-    const amin=+(currentTab==='ppi'?$('hb-angle-ppi').value:120);
+    const dmax=num('hb-dist-ppi',3.5);
+    const amin=num('hb-angle-ppi',120);
+    if(!nativeH.length){
+      const isDA=a=>['N','O','S'].includes((a.elem||'').toUpperCase());
+      const pDA=protA.filter(isDA), qDA=partA.filter(isDA);
+      pDA.forEach(a=>qDA.forEach(b=>{ const d=dist(a,b); if(d>dmax||d<2.2) return; addIxn('HB','#facc15',a,b,'D···A '+d.toFixed(2)+'Å (无氢近似)',d); }));
+    } else {
     const protH = nativeH.filter(h=>proteinChains.includes(h.chain||'_') && showThisH(h,'polar')).map(h=>({h,donor:nearestHeavy(h,protA)}));
     const partH = nativeH.filter(h=>partnerChains.includes(h.chain||'_') && showThisH(h,'polar')).map(h=>({h,donor:nearestHeavy(h,partA)}));
     protH.forEach(({h,donor})=>{ if(!donor) return; partA.forEach(a=>{ if(!['N','O','S'].includes((a.elem||'').toUpperCase())) return; if(dist(h,a)>dmax) return; const ang=angle3pts(pos(donor),pos(h),pos(a)); if(ang<amin) return; addIxn('HB','#facc15',donor,a,'D-H···A '+ang.toFixed(1)+'°',dist(h,a)); }); });
     partH.forEach(({h,donor})=>{ if(!donor) return; protA.forEach(a=>{ if(!['N','O','S'].includes((a.elem||'').toUpperCase())) return; if(dist(h,a)>dmax) return; const ang=angle3pts(pos(donor),pos(h),pos(a)); if(ang<amin) return; addIxn('HB','#facc15',a,donor,'D-H···A '+ang.toFixed(1)+'°',dist(h,a)); }); });
+    }
   }
   // 盐桥
   if(on('iSB-ppi')||on('iSB-diff')){
-    const dmax=4.0;
+    const dmax=num('sb-dist-ppi',4.0);
     const posA=a=>POS_RES.includes((a.resn||'').toUpperCase()), negA=a=>NEG_RES.includes((a.resn||'').toUpperCase());
     const pp=protA.filter(posA), pn=protA.filter(negA), pap=partA.filter(posA), pan=partA.filter(negA);
     pp.forEach(a=>pan.forEach(b=>{const d=dist(a,b);if(d>dmax)return;addIxn('SB','#f97316',a,b,'电荷相反 '+d.toFixed(2)+'Å',d);}));
@@ -563,35 +571,35 @@ function detectPPI(model, proteinChains, partnerChains) {
   }
   // 疏水
   if(on('iHY-ppi')||on('iHY-diff')){
-    const dmax=5.0;
+    const dmax=num('hy-dist-ppi',5.0);
     const hp=protA.filter(a=>HYDROPHOBIC.includes((a.resn||'').toUpperCase())&&(a.atom||'').trim()==='CB');
     const hpa=partA.filter(a=>HYDROPHOBIC.includes((a.resn||'').toUpperCase())&&(a.atom||'').trim()==='CB');
     hp.forEach(a=>hpa.forEach(b=>{const d=dist(a,b);if(d>dmax)return;addIxn('HY','#a3a3a3',a,b,'Cβ-Cβ '+d.toFixed(2)+'Å',d);}));
   }
   // π-π
   if(on('iPP-ppi')||on('iPP-diff')){
-    const dmin=3.3, dmax=6.0, cmin=0.4, cmax=0.9;
+    const dmin=num('pp-min-ppi',3.3), dmax=num('pp-max-ppi',6.0), cmin=num('pp-cos-min-ppi',0.4), cmax=num('pp-cos-max-ppi',0.9);
     const pr=getProteinRings(protA), pa=getProteinRings(partA);
     pr.forEach(r1=>pa.forEach(r2=>{const d=dist(r1.c,r2.c);if(d<dmin||d>dmax)return;const cosn=Math.abs(dot(r1.n,r2.n));if(cosn<cmin||cosn>cmax)return;addIxn('ππ','#22c55e',r1.atoms[0],r2.atoms[0],'环心距'+d.toFixed(1)+'Å |cosθ|='+cosn.toFixed(2),d);}));
   }
   // π-Cat
   if(on('iPC-ppi')||on('iPC-diff')){
-    const dmax=5.0, amin=60;
+    const dmax=num('pc-dist-ppi',5.0), amax=num('pc-angle-ppi',30);
     const pr=getProteinRings(protA), pa=getProteinRings(partA);
     const cp=getCations(protA), ca=getCations(partA);
-    pr.forEach(r=>ca.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>(90-amin/2))return;addIxn('πCat','#38bdf8',r.atoms[0],{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},'距'+d.toFixed(1)+'Å',d);}));
-    pa.forEach(r=>cp.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>(90-amin/2))return;addIxn('πCat','#38bdf8',{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},r.atoms[0],'距'+d.toFixed(1)+'Å',d);}));
+    pr.forEach(r=>ca.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>amax)return;addIxn('πCat','#38bdf8',r.atoms[0],{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},'距'+d.toFixed(1)+'Å',d);}));
+    pa.forEach(r=>cp.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>amax)return;addIxn('πCat','#38bdf8',{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},r.atoms[0],'距'+d.toFixed(1)+'Å',d);}));
   }
   // 二硫键
   if(on('iSS-ppi')||on('iSS-diff')){
-    const dmax=2.5;
+    const dmax=num('ss-dist-ppi',2.5);
     const cp=protA.filter(a=>(a.resn||'').toUpperCase()==='CYS'&&(a.atom||'').trim()==='SG');
     const ca=partA.filter(a=>(a.resn||'').toUpperCase()==='CYS'&&(a.atom||'').trim()==='SG');
     cp.forEach(a=>ca.forEach(b=>{const d=dist(a,b);if(d>dmax)return;addIxn('SS','#ef4444',a,b,'Sγ-Sγ '+d.toFixed(2)+'Å',d);}));
   }
   // 卤键
   if(on('iXB-ppi')||on('iXB-diff')){
-    const dmax=3.5, amin=140;
+    const dmax=num('xb-dist-ppi',3.5), amin=num('xb-angle-ppi',140);
     const halP=protA.filter(a=>HALOGENS.includes((a.elem||'').toUpperCase())), accA=partA.filter(a=>['O','N'].includes((a.elem||'').toUpperCase()));
     const halA=partA.filter(a=>HALOGENS.includes((a.elem||'').toUpperCase())), accP=protA.filter(a=>['O','N'].includes((a.elem||'').toUpperCase()));
     halP.forEach(hal=>{const pa=nearestHeavy(hal,protA.filter(a=>a!==hal));if(!pa)return;accA.forEach(acc=>{if(dist(hal,acc)>dmax)return;const ang=angle3pts(pos(pa),pos(hal),pos(acc));if(ang<amin)return;addIxn('XB','#06b6d4',hal,acc,'C-X···O '+ang.toFixed(1)+'°',dist(hal,acc));});});
@@ -599,8 +607,9 @@ function detectPPI(model, proteinChains, partnerChains) {
   }
   // vdW
   if(on('iVW-ppi')||on('iVW-diff')){
-    const buf=0.5;
-    protA.forEach(a=>{partA.forEach(b=>{const r1=vdW_RADII[(a.elem||'C').toUpperCase()]||1.7;const r2=vdW_RADII[(b.elem||'C').toUpperCase()]||1.7;const d=dist(a,b);if(d<=r1+r2+buf&&d>=0.4){const already=ixns.some(ix=>(ix.a1===a&&ix.a2===b)||(ix.a1===b&&ix.a2===a));if(!already)addIxn('vdW','#c084fc',a,b,'d='+d.toFixed(2)+'Å',d);}});});
+    const buf=num('vw-buffer-ppi',0.5);
+    const seen=new Set(ixns.map(ix=>{const i1=ix.a1.index??ix.a1.serial??0,i2=ix.a2.index??ix.a2.serial??0;return Math.min(i1,i2)+'_'+Math.max(i1,i2)}));
+    protA.forEach(a=>{const ia=a.index??a.serial??0;partA.forEach(b=>{const r1=vdW_RADII[(a.elem||'C').toUpperCase()]||1.7;const r2=vdW_RADII[(b.elem||'C').toUpperCase()]||1.7;const d=dist(a,b);if(d<=r1+r2+buf&&d>=0.4){const ib=b.index??b.serial??0;const k=Math.min(ia,ib)+'_'+Math.max(ia,ib);if(!seen.has(k)){seen.add(k);addIxn('vdW','#c084fc',a,b,'d='+d.toFixed(2)+'Å',d);}}})});
   }
   return ixns;
 }
@@ -655,7 +664,7 @@ function renderPPI(){
   if(!ppiModel||currentTab!=='ppi')return;
   viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
   const bg=$('bg-ppi').value;viewer3d.setBackgroundColor(bg);
-  const dark=bg!=='white';const pc=$('pc-ppi').value,op=+$('op-ppi').value,rad=+$('rad-ppi').value;
+  const dark=bg!=='white';const pc=$('pc-ppi').value,op=num('op-ppi',0.8),rad=num('rad-ppi',0.16);
   const hmode=$('hmode-ppi').value;
   viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:op,arrows:true,style:'rectangle',thickness:0.4}});
   const CHAIN_COLORS=['marine','forest','lightorange','violet','wheat','salmon','lightblue','palegreen','lightpink','grey70'];
@@ -677,18 +686,21 @@ function renderPPI(){
   const addIxn=(type,color,a1,a2,detail,score)=>ppiIxnData.push({type,color,a1,a2,detail,score});
   if(recChains.length&&ligChains.length){
     const recA=prot.filter(a=>isRec(a));const ligA=prot.filter(a=>isLig(a));const recH=nativeH.filter(h=>isRec(h));const ligH=nativeH.filter(h=>isLig(h));
-    if(on('iHB-ppi')){const dmax=+$('hb-dist-ppi').value,amin=+$('hb-angle-ppi').value;const h1=recH.filter(showThisH).map(h=>({h,donor:nearestHeavy(h,recA)}));const h2=ligH.filter(showThisH).map(h=>({h,donor:nearestHeavy(h,ligA)}));h1.forEach(({h,donor})=>{if(!donor)return;ligA.forEach(a=>{if(!['N','O','S'].includes((a.elem||'').toUpperCase()))return;if(dist(h,a)>dmax)return;const ang=angle3pts(pos(donor),pos(h),pos(a));if(ang<amin)return;drawDash(pos(h),pos(a),'#facc15');addIxn('HB','#facc15',donor,a,'D-H···A '+ang.toFixed(1)+'°',dist(h,a))})});h2.forEach(({h,donor})=>{if(!donor)return;recA.forEach(a=>{if(!['N','O','S'].includes((a.elem||'').toUpperCase()))return;if(dist(h,a)>dmax)return;const ang=angle3pts(pos(donor),pos(h),pos(a));if(ang<amin)return;drawDash(pos(h),pos(a),'#facc15');addIxn('HB','#facc15',donor,a,'D-H···A '+ang.toFixed(1)+'°',dist(h,a))})})}
-    if(on('iSB-ppi')){const dmax=+$('sb-dist-ppi').value;const posA=a=>POS_RES.includes((a.resn||'').toUpperCase()),negA=a=>NEG_RES.includes((a.resn||'').toUpperCase());const pr=recA.filter(posA),nr=recA.filter(negA),pl=ligA.filter(posA),nl=ligA.filter(negA);pr.forEach(a=>nl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;drawDash(pos(a),pos(b),'#f97316');addIxn('SB','#f97316',a,b,'电荷相反 '+d.toFixed(2)+'Å',d)}));nr.forEach(a=>pl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;drawDash(pos(a),pos(b),'#f97316');addIxn('SB','#f97316',a,b,'电荷相反 '+d.toFixed(2)+'Å',d)}))}
-    if(on('iHY-ppi')){const dmax=+$('hy-dist-ppi').value;const hr=recA.filter(a=>HYDROPHOBIC.includes((a.resn||'').toUpperCase())&&(a.atom||'').trim()==='CB');const hl=ligA.filter(a=>HYDROPHOBIC.includes((a.resn||'').toUpperCase())&&(a.atom||'').trim()==='CB');hr.forEach(a=>hl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;drawDash(pos(a),pos(b),'#a3a3a3');addIxn('HY','#a3a3a3',a,b,'Cβ-Cβ '+d.toFixed(2)+'Å',d)}))}
-    if(on('iPP-ppi')){const dmin=+$('pp-min-ppi').value,dmax=+$('pp-max-ppi').value,cmin=+$('pp-cos-min-ppi').value,cmax=+$('pp-cos-max-ppi').value;const rr=getProteinRings(recA),lr=getProteinRings(ligA);rr.forEach(pr=>lr.forEach(lr=>{const d=dist(pr.c,lr.c);if(d<dmin||d>dmax)return;const cosn=Math.abs(dot(pr.n,lr.n));if(cosn<cmin||cosn>cmax)return;drawDash(pr.c,lr.c,'#22c55e');viewer3d.addSphere({center:pr.c,radius:.15,color:'#22c55e'});viewer3d.addSphere({center:lr.c,radius:.15,color:'#22c55e'});addIxn('ππ','#22c55e',pr.atoms[0],lr.atoms[0],'环心距'+d.toFixed(1)+'Å |cosθ|='+cosn.toFixed(2),d)}))}
-    if(on('iPC-ppi')){const dmax=+$('pc-dist-ppi').value,amin=+$('pc-angle-ppi').value;const rr=getProteinRings(recA),lr=getProteinRings(ligA);const cr=getCations(recA),cl=getCations(ligA);rr.forEach(r=>cl.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>(90-amin/2))return;drawDash(r.c,c,'#38bdf8');viewer3d.addSphere({center:r.c,radius:.15,color:'#38bdf8'});viewer3d.addSphere({center:c,radius:.17,color:'#38bdf8'});addIxn('πCat','#38bdf8',r.atoms[0],{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},'距'+d.toFixed(1)+'Å',d)}));lr.forEach(r=>cr.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>(90-amin/2))return;drawDash(r.c,c,'#38bdf8');viewer3d.addSphere({center:r.c,radius:.15,color:'#38bdf8'});viewer3d.addSphere({center:c,radius:.17,color:'#38bdf8'});addIxn('πCat','#38bdf8',r.atoms[0],{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},'距'+d.toFixed(1)+'Å',d)}))}
-    if(on('iSS-ppi')){const dmax=+$('ss-dist-ppi').value;const cr=recA.filter(a=>(a.resn||'').toUpperCase()==='CYS'&&(a.atom||'').trim()==='SG');const cl=ligA.filter(a=>(a.resn||'').toUpperCase()==='CYS'&&(a.atom||'').trim()==='SG');cr.forEach(a=>cl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;viewer3d.addCylinder({start:pos(a),end:pos(b),radius:.12,color:'#ef4444',fromCap:1,toCap:1});addIxn('SS','#ef4444',a,b,'Sγ-Sγ '+d.toFixed(2)+'Å',d)}))}
-    if(on('iXB-ppi')){const dmax=+$('xb-dist-ppi').value,amin=+$('xb-angle-ppi').value;const halR=recA.filter(a=>HALOGENS.includes((a.elem||'').toUpperCase())),accL=ligA.filter(a=>['O','N'].includes((a.elem||'').toUpperCase()));const halL=ligA.filter(a=>HALOGENS.includes((a.elem||'').toUpperCase())),accR=recA.filter(a=>['O','N'].includes((a.elem||'').toUpperCase()));halR.forEach(hal=>{const pa=nearestHeavy(hal,recA.filter(a=>a!==hal));if(!pa)return;accL.forEach(acc=>{if(dist(hal,acc)>dmax)return;const ang=angle3pts(pos(pa),pos(hal),pos(acc));if(ang<amin)return;drawDash(pos(hal),pos(acc),'#06b6d4');addIxn('XB','#06b6d4',hal,acc,'C-X···O '+ang.toFixed(1)+'°',dist(hal,acc))})});halL.forEach(hal=>{const pa=nearestHeavy(hal,ligA.filter(a=>a!==hal));if(!pa)return;accR.forEach(acc=>{if(dist(hal,acc)>dmax)return;const ang=angle3pts(pos(pa),pos(hal),pos(acc));if(ang<amin)return;drawDash(pos(hal),pos(acc),'#06b6d4');addIxn('XB','#06b6d4',hal,acc,'C-X···O '+ang.toFixed(1)+'°',dist(hal,acc))})})}
-    if(on('iVW-ppi')){const buf=+$('vw-buffer-ppi').value;recA.forEach(a=>{ligA.forEach(b=>{const r1=vdW_RADII[(a.elem||'C').toUpperCase()]||1.7;const r2=vdW_RADII[(b.elem||'C').toUpperCase()]||1.7;const d=dist(a,b);if(d<=r1+r2+buf&&d>=0.4){const already=ppiIxnData.some(ix=>(ix.a1===a&&ix.a2===b)||(ix.a1===b&&ix.a2===a));if(!already){drawDash(pos(a),pos(b),'#c084fc');addIxn('vdW','#c084fc',a,b,'d='+d.toFixed(2)+'Å',d)}}})})}
+    if(on('iHB-ppi')){const dmax=num('hb-dist-ppi',3.5),amin=num('hb-angle-ppi',120);if(!nativeH.length){const isDA=a=>['N','O','S'].includes((a.elem||'').toUpperCase());const rDA=recA.filter(isDA),lDA=ligA.filter(isDA);rDA.forEach(a=>lDA.forEach(b=>{const d=dist(a,b);if(d>dmax||d<2.2)return;drawDash(pos(a),pos(b),'#facc15');addIxn('HB','#facc15',a,b,'D···A '+d.toFixed(2)+'Å (无氢近似)',d)}))}else{const h1=recH.filter(showThisH).map(h=>({h,donor:nearestHeavy(h,recA)}));const h2=ligH.filter(showThisH).map(h=>({h,donor:nearestHeavy(h,ligA)}));h1.forEach(({h,donor})=>{if(!donor)return;ligA.forEach(a=>{if(!['N','O','S'].includes((a.elem||'').toUpperCase()))return;if(dist(h,a)>dmax)return;const ang=angle3pts(pos(donor),pos(h),pos(a));if(ang<amin)return;drawDash(pos(h),pos(a),'#facc15');addIxn('HB','#facc15',donor,a,'D-H···A '+ang.toFixed(1)+'°',dist(h,a))})});h2.forEach(({h,donor})=>{if(!donor)return;recA.forEach(a=>{if(!['N','O','S'].includes((a.elem||'').toUpperCase()))return;if(dist(h,a)>dmax)return;const ang=angle3pts(pos(donor),pos(h),pos(a));if(ang<amin)return;drawDash(pos(h),pos(a),'#facc15');addIxn('HB','#facc15',donor,a,'D-H···A '+ang.toFixed(1)+'°',dist(h,a))})})}}
+    if(on('iSB-ppi')){const dmax=num('sb-dist-ppi',4.0);const posA=a=>POS_RES.includes((a.resn||'').toUpperCase()),negA=a=>NEG_RES.includes((a.resn||'').toUpperCase());const pr=recA.filter(posA),nr=recA.filter(negA),pl=ligA.filter(posA),nl=ligA.filter(negA);pr.forEach(a=>nl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;drawDash(pos(a),pos(b),'#f97316');addIxn('SB','#f97316',a,b,'电荷相反 '+d.toFixed(2)+'Å',d)}));nr.forEach(a=>pl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;drawDash(pos(a),pos(b),'#f97316');addIxn('SB','#f97316',a,b,'电荷相反 '+d.toFixed(2)+'Å',d)}))}
+    if(on('iHY-ppi')){const dmax=num('hy-dist-ppi',5.0);const hr=recA.filter(a=>HYDROPHOBIC.includes((a.resn||'').toUpperCase())&&(a.atom||'').trim()==='CB');const hl=ligA.filter(a=>HYDROPHOBIC.includes((a.resn||'').toUpperCase())&&(a.atom||'').trim()==='CB');hr.forEach(a=>hl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;drawDash(pos(a),pos(b),'#a3a3a3');addIxn('HY','#a3a3a3',a,b,'Cβ-Cβ '+d.toFixed(2)+'Å',d)}))}
+    if(on('iPP-ppi')){const dmin=num('pp-min-ppi',3.3),dmax=num('pp-max-ppi',6.0),cmin=num('pp-cos-min-ppi',0.4),cmax=num('pp-cos-max-ppi',0.9);const rr=getProteinRings(recA),lr=getProteinRings(ligA);rr.forEach(pr=>lr.forEach(lr=>{const d=dist(pr.c,lr.c);if(d<dmin||d>dmax)return;const cosn=Math.abs(dot(pr.n,lr.n));if(cosn<cmin||cosn>cmax)return;drawDash(pr.c,lr.c,'#22c55e');viewer3d.addSphere({center:pr.c,radius:.15,color:'#22c55e'});viewer3d.addSphere({center:lr.c,radius:.15,color:'#22c55e'});addIxn('ππ','#22c55e',pr.atoms[0],lr.atoms[0],'环心距'+d.toFixed(1)+'Å |cosθ|='+cosn.toFixed(2),d)}))}
+    if(on('iPC-ppi')){const dmax=num('pc-dist-ppi',5.0),amax=num('pc-angle-ppi',30);const rr=getProteinRings(recA),lr=getProteinRings(ligA);const cr=getCations(recA),cl=getCations(ligA);rr.forEach(r=>cl.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>amax)return;drawDash(r.c,c,'#38bdf8');viewer3d.addSphere({center:r.c,radius:.15,color:'#38bdf8'});viewer3d.addSphere({center:c,radius:.17,color:'#38bdf8'});addIxn('πCat','#38bdf8',r.atoms[0],{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},'距'+d.toFixed(1)+'Å',d)}));lr.forEach(r=>cr.forEach(c=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vc=sub(c,r.c),vcn=norm(vc);const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>amax)return;drawDash(r.c,c,'#38bdf8');viewer3d.addSphere({center:r.c,radius:.15,color:'#38bdf8'});viewer3d.addSphere({center:c,radius:.17,color:'#38bdf8'});addIxn('πCat','#38bdf8',r.atoms[0],{x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:'',elem:'N'},'距'+d.toFixed(1)+'Å',d)}))}
+    if(on('iSS-ppi')){const dmax=num('ss-dist-ppi',2.5);const cr=recA.filter(a=>(a.resn||'').toUpperCase()==='CYS'&&(a.atom||'').trim()==='SG');const cl=ligA.filter(a=>(a.resn||'').toUpperCase()==='CYS'&&(a.atom||'').trim()==='SG');cr.forEach(a=>cl.forEach(b=>{const d=dist(a,b);if(d>dmax)return;viewer3d.addCylinder({start:pos(a),end:pos(b),radius:.12,color:'#ef4444',fromCap:1,toCap:1});addIxn('SS','#ef4444',a,b,'Sγ-Sγ '+d.toFixed(2)+'Å',d)}))}
+    if(on('iXB-ppi')){const dmax=num('xb-dist-ppi',3.5),amin=num('xb-angle-ppi',140);const halR=recA.filter(a=>HALOGENS.includes((a.elem||'').toUpperCase())),accL=ligA.filter(a=>['O','N'].includes((a.elem||'').toUpperCase()));const halL=ligA.filter(a=>HALOGENS.includes((a.elem||'').toUpperCase())),accR=recA.filter(a=>['O','N'].includes((a.elem||'').toUpperCase()));halR.forEach(hal=>{const pa=nearestHeavy(hal,recA.filter(a=>a!==hal));if(!pa)return;accL.forEach(acc=>{if(dist(hal,acc)>dmax)return;const ang=angle3pts(pos(pa),pos(hal),pos(acc));if(ang<amin)return;drawDash(pos(hal),pos(acc),'#06b6d4');addIxn('XB','#06b6d4',hal,acc,'C-X···O '+ang.toFixed(1)+'°',dist(hal,acc))})});halL.forEach(hal=>{const pa=nearestHeavy(hal,ligA.filter(a=>a!==hal));if(!pa)return;accR.forEach(acc=>{if(dist(hal,acc)>dmax)return;const ang=angle3pts(pos(pa),pos(hal),pos(acc));if(ang<amin)return;drawDash(pos(hal),pos(acc),'#06b6d4');addIxn('XB','#06b6d4',hal,acc,'C-X···O '+ang.toFixed(1)+'°',dist(hal,acc))})})}
+    if(on('iVW-ppi')){const buf=num('vw-buffer-ppi',0.5);const seen=new Set(ppiIxnData.map(ix=>{const i1=ix.a1.index??ix.a1.serial??0,i2=ix.a2.index??ix.a2.serial??0;return Math.min(i1,i2)+'_'+Math.max(i1,i2)}));recA.forEach(a=>{const ia=a.index??a.serial??0;ligA.forEach(b=>{const r1=vdW_RADII[(a.elem||'C').toUpperCase()]||1.7;const r2=vdW_RADII[(b.elem||'C').toUpperCase()]||1.7;const d=dist(a,b);if(d<=r1+r2+buf&&d>=0.4){const ib=b.index??b.serial??0;const k=Math.min(ia,ib)+'_'+Math.max(ia,ib);if(!seen.has(k)){seen.add(k);drawDash(pos(a),pos(b),'#c084fc');addIxn('vdW','#c084fc',a,b,'d='+d.toFixed(2)+'Å',d)}}})})}
   }
-  if(on('label-ppi')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=+$('lsize-ppi').value;ifaceArr.forEach(k=>{const atoms=resMap[k]||[];const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];if(ca)viewer3d.addLabel(k.split('|')[1]+k.split('|')[2],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})})}
+  if(on('label-ppi')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=num('lsize-ppi',11);ifaceArr.forEach(k=>{const atoms=resMap[k]||[];const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];if(ca)viewer3d.addLabel(k.split('|')[1]+k.split('|')[2],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})})}
   ppiUpdateStatsTable();
+  $('infoTitle').textContent='结构信息';
+  $('infoLine1').innerHTML=ppiChains.map(c=>'<b>Chain '+c+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':(ppiChainRoles[c]==='ligand'?'配体':'未选'))+')').join(' · ');
   $('infoLine2').textContent='界面残基: '+ifaceArr.length+' 个 | 接触对: '+ppiIxnData.length+' 对';
+  $('infoDetail').textContent='氢键 '+ppiIxnData.filter(x=>x.type==='HB').length+' | 盐桥 '+ppiIxnData.filter(x=>x.type==='SB').length+' | 疏水 '+ppiIxnData.filter(x=>x.type==='HY').length;
   viewer3d.render();
 }
 function ppiUpdateStatsTable(){
@@ -800,7 +812,7 @@ function diffLoadFile(f,label){
     $(isWT?'drop-wt-diff':'drop-mut-diff').textContent=(isWT?'WT: ':'Mut: ')+f.name;
     const m=isWT?diffModelWT:diffModelMut;const all=m.selectedAtoms({});const newChains=[...new Set(all.filter(a=>!a.hetflag).map(a=>a.chain||'_'))].sort();
     if(isWT){diffAllChains=newChains;diffChainRoles={};newChains.forEach((ch,i)=>{diffChainRoles[ch]=i===0?'wt':'partner'})}
-    else{newChains.forEach((ch,i)=>{if(!diffChainRoles[ch])diffChainRoles[ch]=i===0?'mut':'partner'})}
+    else{newChains.forEach(ch=>{if(!diffAllChains.includes(ch)){diffAllChains.push(ch);diffAllChains.sort()}if(!diffChainRoles[ch])diffChainRoles[ch]='partner'})}
     diffBuildChainUI();diffUpdateAnchorSelect();
     $('hint').style.display='none';$('floatInfo').style.display='block';
     if(on('autoAlign-diff')&&diffModelWT&&diffModelMut)runDiffAlignment();else{diffDetectMutations();if(currentTab==='diff')renderDiff()}
@@ -834,10 +846,13 @@ function runDiffAlignment(){
   const mutAll=diffModelMut.selectedAtoms({});mutAll.forEach(a=>{const v=pos(a);a.x=R[0][0]*v.x+R[0][1]*v.y+R[0][2]*v.z+t.x;a.y=R[1][0]*v.x+R[1][1]*v.y+R[1][2]*v.z+t.y;a.z=R[2][0]*v.x+R[2][1]*v.y+R[2][2]*v.z+t.z});
   diffHasAligned=true;diffDetectMutations();if(currentTab==='diff')renderDiff();
 }
+// Mut 复合物中的“突变蛋白”链：优先取显式标记为 mut 的链；若未标记（常见于两份文件链名相同），沿用 WT 蛋白的链名
+function diffMutProteinChains(){const explicit=diffAllChains.filter(c=>diffChainRoles[c]==='mut');return explicit.length?explicit:diffAllChains.filter(c=>diffChainRoles[c]==='wt')}
+
 function diffDetectMutations(){
   diffMutations=[];if(!diffModelWT||!diffModelMut)return;
   const wtChains=diffAllChains.filter(c=>diffChainRoles[c]==='wt');
-  const mutChains=diffAllChains.filter(c=>diffChainRoles[c]==='mut');
+  const mutChains=diffMutProteinChains();
   const wtRes={},mutRes={};
   const collect=(m,chains,obj)=>{m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA'&&chains.includes(a.chain||'_')).forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!obj[k])obj[k]=a})};
   collect(diffModelWT,wtChains,wtRes);collect(diffModelMut,mutChains,mutRes);
@@ -859,7 +874,7 @@ function renderDiff(){
   if(diffModelWT){viewer3d.setStyle({model:diffModelWT,hetflag:false},{cartoon:{color:colWT,opacity:opWT,arrows:true,style:'rectangle',thickness:0.4}});partnerChains.forEach(ch=>{viewer3d.setStyle({model:diffModelWT,hetflag:false,chain:ch},{cartoon:{color:colPartner,opacity:opWT,arrows:true,style:'rectangle',thickness:0.4}})})}
   if(diffModelMut){viewer3d.setStyle({model:diffModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}});partnerChains.forEach(ch=>{viewer3d.setStyle({model:diffModelMut,hetflag:false,chain:ch},{cartoon:{color:colPartner,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}})})}
   const wtChains=diffAllChains.filter(c=>diffChainRoles[c]==='wt');
-  const mutChains=diffAllChains.filter(c=>diffChainRoles[c]==='mut');
+  const mutChains=diffMutProteinChains();
   diffWtIxn=detectPPI(diffModelWT,wtChains,partnerChains);
   diffMutIxn=detectPPI(diffModelMut,mutChains,partnerChains);
   const drawIxn=(ix,isWT)=>{const c=ix.color;const p1=pos(ix.a1),p2=pos(ix.a2);if(ix.type==='SS')viewer3d.addCylinder({start:p1,end:p2,radius:.1,color:c,fromCap:1,toCap:1});else if(isWT)viewer3d.addCylinder({start:p1,end:p2,radius:.05,color:c,fromCap:1,toCap:1});else viewer3d.addCylinder({start:p1,end:p2,radius:.04,dashed:true,fromCap:1,toCap:1,color:c})};
@@ -892,7 +907,7 @@ function diffRenderDiffList(){
   let html='';sorted.forEach((d,i)=>{const a1=d.a1,a2=d.a2;const resA=(a1.resn||'')+(a1.resi||''),resB=(a2.resn||'')+(a2.resi||'');const chA=a1.chain||'_',chB=a2.chain||'_';const cls=d.diff==='lost'?'lost':(d.diff==='gained'?'gained':'changed');const badgeColor=d.diff==='lost'?'#ef4444':(d.diff==='gained'?'#22c55e':'#22d3ee');html+='<div class="diff-row '+cls+'" onclick="diffFocusDiff('+i+')">'+'<span class="badge" style="background:'+badgeColor+'20;color:'+badgeColor+';border:1px solid '+badgeColor+';font-size:10px;padding:1px 4px;border-radius:4px">'+d.diffLabel+'</span>'+'<span style="color:'+colorMap[d.type]+';font-size:10px;font-weight:700;margin-left:4px">'+typeMap[d.type]+'</span>'+'<span style="color:#94a3b8;font-size:10px;flex:1;margin-left:6px">'+chA+resA+' ↔ '+chB+resB+' '+d.detail+'</span></div>'});wrap.innerHTML=html;
 }
 function diffFocusDiff(idx){if(!diffResults[idx])return;const d=diffResults[idx];const c1=pos(d.a1),c2=pos(d.a2);const mid={x:(c1.x+c2.x)/2,y:(c1.y+c2.y)/2,z:(c1.z+c2.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},8);viewer3d.render()}
-function updateDiffStats(){const count=(arr,t)=>arr.filter(x=>x.type===t).length;const p=['HB','SB','HY','ππ','πCat','SS'];p.forEach(t=>{if($('wt-stat-'+t.toLowerCase()))$('wt-stat-'+t.toLowerCase()).textContent=count(diffWtIxn,t);if($('mut-stat-'+t.toLowerCase()))$('mut-stat-'+t.toLowerCase()).textContent=count(diffMutIxn,t)})}
+function updateDiffStats(){const count=(arr,t)=>arr.filter(x=>x.type===t).length;const map={HB:'hb',SB:'sb',HY:'hy','ππ':'pp','πCat':'pc',SS:'ss'};Object.entries(map).forEach(([t,suf])=>{if($('wt-stat-'+suf))$('wt-stat-'+suf).textContent=count(diffWtIxn,t);if($('mut-stat-'+suf))$('mut-stat-'+suf).textContent=count(diffMutIxn,t)})}
 function exportDiffCSV(){if(!diffResults.length){alert('暂无差异数据');return}const typeMap={'HB':'氢键','SB':'盐桥','HY':'疏水','ππ':'π-π','πCat':'π-Cat','SS':'二硫键','XB':'卤键','vdW':'vdW'};let csv='差异类型,互作类型,链A,残基A,链B,残基B,详情,距离\n';diffResults.forEach(d=>{const a1=d.a1,a2=d.a2;csv+=d.diffLabel+','+typeMap[d.type]+','+(a1.chain||'_')+','+(a1.resn||'')+(a1.resi||'')+','+(a2.chain||'_')+','+(a2.resn||'')+(a2.resi||'')+','+d.detail+','+d.score.toFixed(3)+'\n'});const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_Diff_Report.csv';a.click();URL.revokeObjectURL(url)}
 </script>
 </body>
