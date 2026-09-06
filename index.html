@@ -268,11 +268,14 @@ input[type="text"]{width:100%}
     <div class="panel-head" onclick="togglePanel(this.parentElement)"><b>结构叠加</b><span class="arrow">▶</span></div>
     <div class="panel-body">
       <div class="row"><span>自动 Cα 叠加</span><i id="autoAlign" class="toggle on"></i></div>
+      <div class="row"><span>序列比对辅助（同源蛋白）</span><i id="seqAlign" class="toggle on"></i></div>
       <div class="row"><span>叠加链</span><select id="alignChain"><option value="">全部链</option></select></div>
       <button class="btn btn-sm btn-secondary" onclick="runAlignment()" style="margin:6px 0">重新叠加</button>
       <div class="stat-grid" style="margin-top:8px">
         <div class="stat-card"><div class="num" id="stat-rmsd">—</div><div class="label">Cα RMSD (Å)</div></div>
         <div class="stat-card"><div class="num" id="stat-mut">0</div><div class="label">突变位点</div></div>
+        <div class="stat-card"><div class="num" id="stat-identity">—</div><div class="label">序列一致性</div></div>
+        <div class="stat-card"><div class="num" id="stat-aligned">—</div><div class="label">比对残基数</div></div>
       </div>
     </div>
   </div>
@@ -456,56 +459,52 @@ const AROM = { PHE:[['CG','CD1','CD2','CE1','CE2','CZ']], TYR:[['CG','CD1','CD2'
 
 // Kabsch
 function kabsch(P, Q) {
+  // Horn 四元数法：返回将 P 叠加到 Q 的最优刚体变换（Q ≈ R·P + t），对近简并协方差数值稳定
   const n = P.length;
   const cp = centroid(P), cq = centroid(Q);
-  let p = P.map(v => sub(v, cp)), q = Q.map(v => sub(v, cq));
-  let S = [[0,0,0],[0,0,0],[0,0,0]];
+  const p = P.map(v => sub(v, cp)), q = Q.map(v => sub(v, cq));
+  let Sxx=0,Sxy=0,Sxz=0,Syx=0,Syy=0,Syz=0,Szx=0,Szy=0,Szz=0;
   for (let i = 0; i < n; i++) {
-    S[0][0] += p[i].x * q[i].x; S[0][1] += p[i].x * q[i].y; S[0][2] += p[i].x * q[i].z;
-    S[1][0] += p[i].y * q[i].x; S[1][1] += p[i].y * q[i].y; S[1][2] += p[i].y * q[i].z;
-    S[2][0] += p[i].z * q[i].x; S[2][1] += p[i].z * q[i].y; S[2][2] += p[i].z * q[i].z;
+    Sxx+=p[i].x*q[i].x; Sxy+=p[i].x*q[i].y; Sxz+=p[i].x*q[i].z;
+    Syx+=p[i].y*q[i].x; Syy+=p[i].y*q[i].y; Syz+=p[i].y*q[i].z;
+    Szx+=p[i].z*q[i].x; Szy+=p[i].z*q[i].y; Szz+=p[i].z*q[i].z;
   }
-  const {U, V} = svd3x3(S);
-  let R = [[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) for(let k=0;k<3;k++) R[i][j] += V[i][k] * U[j][k];
-  const det = R[0][0]*(R[1][1]*R[2][2]-R[1][2]*R[2][1]) - R[0][1]*(R[1][0]*R[2][2]-R[1][2]*R[2][0]) + R[0][2]*(R[1][0]*R[2][1]-R[1][1]*R[2][0]);
-  if(det < 0) { for(let i=0;i<3;i++) R[i][2] = -R[i][2]; }
+  const N=[[Sxx+Syy+Szz, Syz-Szy, Szx-Sxz, Sxy-Syx],
+           [Syz-Szy, Sxx-Syy-Szz, Sxy+Syx, Sxz+Szx],
+           [Szx-Sxz, Sxy+Syx, -Sxx+Syy-Szz, Syz+Szy],
+           [Sxy-Syx, Sxz+Szx, Syz+Szy, -Sxx-Syy+Szz]];
+  // 幂迭代求最大特征向量（先做正漂移，保证目标特征值幅值占优）
+  let shift=0; for(let i=0;i<4;i++){let s=0;for(let j=0;j<4;j++)s+=Math.abs(N[i][j]);if(s>shift)shift=s}
+  const M=N.map((r,i)=>r.map((v,j)=>v+(i===j?2*shift:0)));
+  let v=[1,0.5,0.3,0.7];
+  for(let it=0;it<300;it++){
+    const w=[0,0,0,0];
+    for(let i=0;i<4;i++)for(let j=0;j<4;j++)w[i]+=M[i][j]*v[j];
+    const nrm=Math.hypot(w[0],w[1],w[2],w[3])||1;
+    const nv=w.map(x=>x/nrm);
+    const dv=Math.max(Math.abs(nv[0]-v[0]),Math.abs(nv[1]-v[1]),Math.abs(nv[2]-v[2]),Math.abs(nv[3]-v[3]));
+    v=nv; if(dv<1e-12)break;
+  }
+  let w=v[0],x=v[1],y=v[2],z=v[3];const qn=Math.hypot(w,x,y,z)||1;w/=qn;x/=qn;y/=qn;z/=qn;
+  const R=[[1-2*(y*y+z*z), 2*(x*y-w*z), 2*(x*z+w*y)],
+           [2*(x*y+w*z), 1-2*(x*x+z*z), 2*(y*z-w*x)],
+           [2*(x*z-w*y), 2*(y*z+w*x), 1-2*(x*x+y*y)]];
   return {R, t: sub(cq, {x: R[0][0]*cp.x+R[0][1]*cp.y+R[0][2]*cp.z, y: R[1][0]*cp.x+R[1][1]*cp.y+R[1][2]*cp.z, z: R[2][0]*cp.x+R[2][1]*cp.y+R[2][2]*cp.z})};
 }
-function svd3x3(A) {
-  let ATA = [[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) for(let k=0;k<3;k++) ATA[i][j] += A[k][i]*A[k][j];
-  let {V, d} = eig3x3sym(ATA);
-  let AAT = [[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) for(let k=0;k<3;k++) AAT[i][j] += A[i][k]*A[j][k];
-  let {V:U} = eig3x3sym(AAT);
-  return {U, V};
-}
-function eig3x3sym(M) {
-  let A = M.map(r=>r.slice());
-  let V = [[1,0,0],[0,1,0],[0,0,1]];
-  for(let iter=0; iter<50; iter++) {
-    let maxOff = 0, p=0, q=1;
-    for(let i=0;i<3;i++) for(let j=i+1;j<3;j++) if(Math.abs(A[i][j])>maxOff){maxOff=Math.abs(A[i][j]);p=i;q=j;}
-    if(maxOff < 1e-12) break;
-    let phi = 0.5 * Math.atan2(2*A[p][q], A[q][q]-A[p][p]);
-    let c = Math.cos(phi), s = Math.sin(phi);
-    let App = c*c*A[p][p] - 2*s*c*A[p][q] + s*s*A[q][q];
-    let Aqq = s*s*A[p][p] + 2*s*c*A[p][q] + c*c*A[q][q];
-    A[p][p] = App; A[q][q] = Aqq; A[p][q] = A[q][p] = 0;
-    for(let i=0;i<3;i++) if(i!==p && i!==q) {
-      let Aip = c*A[i][p] - s*A[i][q], Aiq = s*A[i][p] + c*A[i][q];
-      A[i][p] = A[p][i] = Aip; A[i][q] = A[q][i] = Aiq;
-    }
-    for(let i=0;i<3;i++) {
-      let Vip = c*V[i][p] - s*V[i][q], Viq = s*V[i][p] + c*V[i][q];
-      V[i][p] = Vip; V[i][q] = Viq;
-    }
+function applyRT(v,R,t){return {x:R[0][0]*v.x+R[0][1]*v.y+R[0][2]*v.z+t.x, y:R[1][0]*v.x+R[1][1]*v.y+R[1][2]*v.z+t.y, z:R[2][0]*v.x+R[2][1]*v.y+R[2][2]*v.z+t.z}}
+// 迭代核心叠加（类似 PyMOL align 的 cycles）：反复剔除位移离群对，返回核心对的稳定叠加
+// getA 取自"要移动的模型"，getB 取自"参考模型"
+function kabschCore(pairs, getA, getB, maxIter=5, cutoff=3.0){
+  let cur=pairs.slice(), best=null;
+  for(let it=0;it<maxIter;it++){
+    const{R,t}=kabsch(cur.map(getA),cur.map(getB));
+    let s=0;const disp=cur.map(pr=>{const d=dist(applyRT(getA(pr),R,t),getB(pr));s+=d*d;return d});
+    best={R,t,rmsd:Math.sqrt(s/cur.length),core:cur.length};
+    const kept=cur.filter((_,i)=>disp[i]<=cutoff);
+    if(kept.length===cur.length||kept.length<Math.max(3,cur.length*0.3))break;
+    cur=kept;
   }
-  let idx = [0,1,2].sort((a,b)=>Math.abs(A[b][b])-Math.abs(A[a][a]));
-  let Vs = [[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) Vs[i][j] = V[i][idx[j]];
-  return {V: Vs, d: [A[idx[0]][idx[0]], A[idx[1]][idx[1]], A[idx[2]][idx[2]]]};
+  return best;
 }
 
 // 共享 3Dmol viewer
@@ -534,6 +533,10 @@ function togglePanel(panel){ panel.classList.toggle('open'); }
 function exportPng(){ if(!viewer3d) return; const a=document.createElement('a'); a.href=viewer3d.pngURI(); a.download='ProLigView_'+currentTab+'.png'; a.click(); }
 
 // 通用辅助
+function showBusy(msg){ let el=$('__busy'); if(!el){ el=document.createElement('div'); el.id='__busy'; el.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;padding:8px 18px;border-radius:8px;z-index:99998;font-size:13px;border:1px solid #475569;box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none'; document.body.appendChild(el); } el.textContent=msg; el.style.display='block'; }
+function hideBusy(){ const el=$('__busy'); if(el) el.style.display='none'; }
+const uiTick=()=>new Promise(r=>setTimeout(r,0));
+const MUT_VISUAL_CAP=200; // 突变位点超过此数时不再绘制位移虚线/标签，避免成千上万个 shape 卡死页面
 function normalizeHydrogens(m){ m.selectedAtoms({}).forEach(a=>{ if((a.elem||'').toUpperCase()!=='H' && isHydrogen(a)) a.elem='H'; }); }
 function nearestHeavy(h, heavy){
   let best=null, bd=1e9;
@@ -897,52 +900,162 @@ function ppiFocusIxn(idx){if(!ppiIxnData[idx])return;const ix=ppiIxnData[idx];co
 // ==================== Align 模块状态 ====================
 let alignModelWT=null, alignModelMut=null;
 let alignChains=[], alignMutations=[], alignHasAligned=false;
+let alignCoreRmsd=null, alignCorePairs=0, alignAllRmsd=null, alignPairCount=0;
 
 // 事件
 setupDrop('drop-wt','file-wt','WT');
 setupDrop('drop-mut','file-mut','Mut');
 function setupDrop(dropId,fileId,label){$(dropId).onclick=()=>$(fileId).click();$(fileId).onchange=e=>alignLoadFile(e.target.files[0],label);$(dropId).ondragover=e=>e.preventDefault();$(dropId).ondrop=e=>{e.preventDefault();alignLoadFile(e.dataTransfer.files[0],label)}}
 ['autoAlign','mutLabel','mutLine','label-align'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='align')renderAlign()}});
+if($('seqAlign'))$('seqAlign').onclick=()=>{$('seqAlign').classList.toggle('on');alignMapData=null;if(alignModelWT&&alignModelMut){if(on('autoAlign'))runAlignment();else{detectAlignMutations();if(currentTab==='align')renderAlign()}}};
 const alignDebounced = debounce(()=>{ if(currentTab==='align') renderAlign(); }, 150);
 ['bg-align','col-wt','col-mut','op-wt','op-mut','lsize-align','alignChain','mutMode'].forEach(id=>{if($(id)){$(id).oninput=alignDebounced;$(id).onchange=function(){if(this.id==='mutMode')$('mutManualWrap').style.display=this.value==='manual'?'block':'none';if(currentTab==='align')renderAlign()}}});
 
 function alignLoadFile(f,label){
   const r=new FileReader();
-  r.onload=()=>{try{
+  r.onload=async()=>{try{
+    showBusy('正在解析 '+f.name+' …');await uiTick();
     const isWT=label==='WT';
     if(isWT){if(alignModelWT)viewer3d.removeModel(alignModelWT);alignModelWT=viewer3d.addModel(r.result,/cif/i.test(f.name)?'cif':'pdb',{keepH:true});normalizeHydrogens(alignModelWT)}
     else{if(alignModelMut)viewer3d.removeModel(alignModelMut);alignModelMut=viewer3d.addModel(r.result,/cif/i.test(f.name)?'cif':'pdb',{keepH:true});normalizeHydrogens(alignModelMut)}
+    if(!(isWT?alignModelWT:alignModelMut).selectedAtoms({}).length)throw new Error('文件中未解析到任何原子，请确认是有效的 PDB/mmCIF 结构文件');
     $(isWT?'drop-wt':'drop-mut').classList.add('active');
     $(isWT?'drop-wt':'drop-mut').textContent=(isWT?'WT: ':'Mut: ')+f.name;
     const m=isWT?alignModelWT:alignModelMut;const all=m.selectedAtoms({});const newChains=[...new Set(all.filter(a=>!a.hetflag).map(a=>a.chain||'_'))].sort();
     if(isWT){alignChains=newChains;updateAlignSelect()}
     $('hint').style.display='none';$('floatInfo').style.display='block';
-    if(on('autoAlign')&&alignModelWT&&alignModelMut)runAlignment();else{detectAlignMutations();if(currentTab==='align')renderAlign()}
+    if(on('autoAlign')&&alignModelWT&&alignModelMut){showBusy('正在执行 Cα 叠加 …');await uiTick();runAlignment()}else{detectAlignMutations();if(currentTab==='align')renderAlign()}
     if(currentTab==='align'){viewer3d.zoomTo({});viewer3d.zoom(0.8);viewer3d.render()}
-  }catch(e){alert('解析失败: '+e.message);console.error(e)}};
+    hideBusy();
+  }catch(e){hideBusy();alert('解析失败: '+e.message);console.error(e)}};
   r.readAsText(f);
 }
 function updateAlignSelect(){const sel=$('alignChain');sel.innerHTML='<option value="">全部链</option>';alignChains.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent='Chain '+c;sel.appendChild(o)})}
 
+// ==================== 序列比对辅助叠加（同源蛋白） ====================
+const AA3TO1={ALA:'A',ARG:'R',ASN:'N',ASP:'D',CYS:'C',GLN:'Q',GLU:'E',GLY:'G',HIS:'H',ILE:'I',LEU:'L',LYS:'K',MET:'M',PHE:'F',PRO:'P',SER:'S',THR:'T',TRP:'W',TYR:'Y',VAL:'V',MSE:'M',SEC:'U',PYL:'O',ASX:'B',GLX:'Z',UNK:'X'};
+const B62=(()=>{
+  const order='ARNDCQEGHILKMFPSTWYV';
+  const rows=[
+    [4,-1,-2,-2,0,-1,-1,0,-2,-1,-1,-1,-1,-2,-1,1,0,-3,-2,0],
+    [-1,5,0,-2,-3,1,0,-2,0,-3,-2,2,-1,-3,-2,-1,-1,-3,-2,-3],
+    [-2,0,6,1,-3,0,0,0,1,-3,-3,0,-2,-3,-2,1,0,-4,-2,-3],
+    [-2,-2,1,6,-3,0,2,-1,-1,-3,-4,-1,-3,-3,-1,0,-1,-4,-3,-3],
+    [0,-3,-3,-3,9,-3,-4,-3,-3,-1,-1,-3,-1,-2,-3,-1,-1,-2,-2,-1],
+    [-1,1,0,0,-3,5,2,-2,0,-3,-2,1,0,-3,-1,0,-1,-2,-1,-2],
+    [-1,0,0,2,-4,2,5,-2,0,-3,-3,1,-2,-3,-1,0,-1,-3,-2,-2],
+    [0,-2,0,-1,-3,-2,-2,6,-2,-4,-4,-2,-3,-3,-2,0,-2,-2,-3,-3],
+    [-2,0,1,-1,-3,0,0,-2,8,-3,-3,-1,-2,-1,-2,-1,-2,-2,2,-3],
+    [-1,-3,-3,-3,-1,-3,-3,-4,-3,4,2,-3,1,0,-3,-2,-1,-3,-1,3],
+    [-1,-2,-3,-4,-1,-2,-3,-4,-3,2,4,-2,2,0,-3,-2,-1,-2,-1,1],
+    [-1,2,0,-1,-3,1,1,-2,-1,-3,-2,5,-1,-3,-1,0,-1,-3,-2,-2],
+    [-1,-1,-2,-3,-1,0,-2,-3,-2,1,2,-1,5,0,-2,-1,-1,-1,-1,1],
+    [-2,-3,-3,-3,-2,-3,-3,-3,-1,0,0,-3,0,6,-4,-2,-2,1,3,-1],
+    [-1,-2,-2,-1,-3,-1,-1,-2,-2,-3,-3,-1,-2,-4,7,-1,-1,-4,-3,-2],
+    [1,-1,1,0,-1,0,0,0,-1,-2,-2,0,-1,-2,-1,4,1,-3,-2,-2],
+    [0,-1,0,-1,-1,-1,-1,-2,-2,-1,-1,-1,-1,-2,-1,1,5,-2,-2,0],
+    [-3,-3,-4,-4,-2,-2,-3,-2,-2,-3,-2,-3,-1,1,-4,-3,-2,11,2,-3],
+    [-2,-2,-2,-3,-2,-1,-2,-3,2,-1,-1,-2,-1,3,-3,-2,-2,2,7,-1],
+    [0,-3,-3,-3,-1,-2,-2,-3,-3,3,1,-2,1,-1,-2,-2,0,-3,-1,4]];
+  const m={};rows.forEach((r,i)=>{for(let j=0;j<20;j++)m[order[i]+order[j]]=r[j]});
+  return (a,b)=>{const v=m[a+b];return v!==undefined?v:(a===b?4:-4)};
+})();
+// Needleman-Wunsch 全局比对（Gotoh 仿射空位罚分：open 10 / extend 1）
+function nwAlign(s1,s2){
+  const n=s1.length,m=s2.length,W=m+1,GO=10,GE=1,NEG=-1e15;
+  const M=new Float64Array((n+1)*W),Ix=new Float64Array((n+1)*W),Iy=new Float64Array((n+1)*W);
+  for(let i=1;i<=n;i++){Ix[i*W]=-GO-(i-1)*GE;M[i*W]=NEG;Iy[i*W]=NEG}
+  for(let j=1;j<=m;j++){Iy[j]=-GO-(j-1)*GE;M[j]=NEG;Ix[j]=NEG}
+  for(let i=1;i<=n;i++){const a=s1[i-1];for(let j=1;j<=m;j++){const idx=i*W+j;
+    M[idx]=Math.max(M[idx-W-1],Ix[idx-W-1],Iy[idx-W-1])+B62(a,s2[j-1]);
+    Ix[idx]=Math.max(M[idx-W]-GO,Ix[idx-W]-GE);
+    Iy[idx]=Math.max(M[idx-1]-GO,Iy[idx-1]-GE);
+  }}
+  const pairs=[];let i=n,j=m;
+  let state=(M[n*W+m]>=Ix[n*W+m]&&M[n*W+m]>=Iy[n*W+m])?0:(Ix[n*W+m]>=Iy[n*W+m]?1:2);
+  while(i>0&&j>0){const idx=i*W+j;
+    if(state===0){pairs.push([i-1,j-1]);const v0=M[idx-W-1],v1=Ix[idx-W-1],v2=Iy[idx-W-1];i--;j--;state=(v0>=v1&&v0>=v2)?0:(v1>=v2?1:2)}
+    else if(state===1){state=(M[idx-W]-GO>=Ix[idx-W]-GE)?0:1;i--}
+    else{state=(M[idx-1]-GO>=Iy[idx-1]-GE)?0:2;j--}
+  }
+  pairs.reverse();
+  return{pairs,score:Math.max(M[n*W+m],Ix[n*W+m],Iy[n*W+m])};
+}
+function alignChainResidues(model){
+  const byChain={};
+  model.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA').forEach(a=>{
+    const ch=a.chain||'_';if(!byChain[ch])byChain[ch]={atoms:[],seen:new Set()};
+    const k=a.resi+'|'+(a.resc||'');if(!byChain[ch].seen.has(k)){byChain[ch].seen.add(k);byChain[ch].atoms.push(a)}
+  });
+  return byChain;
+}
+let alignMapData=null;
+// 基于序列比对的残基配对：链间全组合比对，按归一化得分贪心匹配链，再按比对结果配对 Cα
+function alignBuildMapping(){
+  const chainFilter=$('alignChain').value;
+  const wtBy=alignChainResidues(alignModelWT),mutBy=alignChainResidues(alignModelMut);
+  const wtChains=Object.keys(wtBy).filter(c=>!chainFilter||c===chainFilter),mutChains=Object.keys(mutBy);
+  const cand=[];
+  wtChains.forEach(wc=>{const ws=wtBy[wc].atoms.map(a=>AA3TO1[(a.resn||'').toUpperCase()]||'X').join('');
+    mutChains.forEach(mc=>{const ms=mutBy[mc].atoms.map(a=>AA3TO1[(a.resn||'').toUpperCase()]||'X').join('');
+      if(!ws.length||!ms.length)return;
+      const r=nwAlign(ws,ms);
+      cand.push({wc,mc,score:r.score/Math.min(ws.length,ms.length),aln:r,ws,ms});
+    })});
+  cand.sort((a,b)=>b.score-a.score);
+  const usedW=new Set(),usedM=new Set(),pairs=[],subs=[];let nIdent=0,nAligned=0;
+  cand.forEach(c=>{
+    if(usedW.has(c.wc)||usedM.has(c.mc))return;
+    if(c.score<0.5)return; // 无同源信号
+    usedW.add(c.wc);usedM.add(c.mc);
+    const wa=wtBy[c.wc].atoms,ma=mutBy[c.mc].atoms;
+    c.aln.pairs.forEach(([i,j])=>{
+      nAligned++;if(c.ws[i]===c.ms[j])nIdent++;
+      const pair={wt:wa[i],mut:ma[j]};pairs.push(pair);
+      if((wa[i].resn||'').toUpperCase()!==(ma[j].resn||'').toUpperCase())subs.push(pair);
+    });
+  });
+  return{pairs,subs,nIdent,nAligned};
+}
+
 function runAlignment(){
   if(!alignModelWT||!alignModelMut){alert('请先载入 WT 和 Mut 结构');return}
-  alignHasAligned=false;
-  const chainFilter=$('alignChain').value;
-  const getCA=(m)=>{let atoms=m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA');if(chainFilter)atoms=atoms.filter(a=>(a.chain||'_')===chainFilter);return atoms};
-  const wtCA=getCA(alignModelWT);const mutCA=getCA(alignModelMut);
-  const wtMap=new Map();wtCA.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!wtMap.has(k))wtMap.set(k,a)});
-  const mutMap=new Map();mutCA.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!mutMap.has(k))mutMap.set(k,a)});
-  const pairs=[];wtMap.forEach((a,k)=>{if(mutMap.has(k))pairs.push({wt:a,mut:mutMap.get(k)})});
-  if(pairs.length<3){alert('匹配 Cα 原子不足 3 个，无法叠加');return}
-  const P=pairs.map(p=>pos(p.wt)),Q=pairs.map(p=>pos(p.mut));const{R,t}=kabsch(P,Q);
-  let rmsd=0;pairs.forEach(p=>{const v=pos(p.wt);const rv={x:R[0][0]*v.x+R[0][1]*v.y+R[0][2]*v.z+t.x,y:R[1][0]*v.x+R[1][1]*v.y+R[1][2]*v.z+t.y,z:R[2][0]*v.x+R[2][1]*v.y+R[2][2]*v.z+t.z};rmsd+=dist(rv,pos(p.mut))**2});
-  rmsd=Math.sqrt(rmsd/pairs.length);$('stat-rmsd').textContent=rmsd.toFixed(3);
-  const mutAll=alignModelMut.selectedAtoms({});mutAll.forEach(a=>{const v=pos(a);a.x=R[0][0]*v.x+R[0][1]*v.y+R[0][2]*v.z+t.x;a.y=R[1][0]*v.x+R[1][1]*v.y+R[1][2]*v.z+t.y;a.z=R[2][0]*v.x+R[2][1]*v.y+R[2][2]*v.z+t.z});
+  alignHasAligned=false;alignMapData=null;
+  let pairs;
+  if(on('seqAlign')){
+    alignMapData=alignBuildMapping();pairs=alignMapData.pairs;
+    if(pairs.length<3){alert('序列比对后匹配 Cα 不足 3 个，无法叠加。可尝试关闭"序列比对辅助"改用编号匹配');return}
+  }else{
+    const chainFilter=$('alignChain').value;
+    const getCA=(m)=>{let atoms=m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA');if(chainFilter)atoms=atoms.filter(a=>(a.chain||'_')===chainFilter);return atoms};
+    const wtCA=getCA(alignModelWT),mutCA=getCA(alignModelMut);
+    const wtMap=new Map();wtCA.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!wtMap.has(k))wtMap.set(k,a)});
+    const mutMap=new Map();mutCA.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!mutMap.has(k))mutMap.set(k,a)});
+    pairs=[];wtMap.forEach((a,k)=>{if(mutMap.has(k))pairs.push({wt:a,mut:mutMap.get(k)})});
+    if(pairs.length<3){alert('匹配 Cα 原子不足 3 个，无法叠加。若两份结构编号不一致，可开启"序列比对辅助"');return}
+  }
+  // 把 Mut 叠加到 WT 上（getA=Mut, getB=WT），迭代剔除离群对得到核心叠加
+  const fit=kabschCore(pairs,p=>pos(p.mut),p=>pos(p.wt));
+  const{R,t}=fit;
+  if(![R[0][0],R[1][1],R[2][2],t.x,t.y,t.z].every(isFinite)){alert('叠加计算失败：坐标数据异常（含 NaN/Infinity），请检查输入文件');return}
+  const mutAll=alignModelMut.selectedAtoms({});mutAll.forEach(a=>{const v=applyRT(pos(a),R,t);a.x=v.x;a.y=v.y;a.z=v.z});
+  let sAll=0;pairs.forEach(p=>{sAll+=dist(pos(p.mut),pos(p.wt))**2});
+  alignCoreRmsd=fit.rmsd;alignCorePairs=fit.core;alignAllRmsd=Math.sqrt(sAll/pairs.length);alignPairCount=pairs.length;
+  $('stat-rmsd').textContent=fit.rmsd.toFixed(3);
   alignHasAligned=true;detectAlignMutations();if(currentTab==='align')renderAlign();
 }
 function detectAlignMutations(){
   alignMutations=[];if(!alignModelWT||!alignModelMut)return;
   const mode=$('mutMode').value;if(mode==='manual'){parseAlignManualMut();return}
+  if(on('seqAlign')){
+    if(!alignMapData)alignMapData=alignBuildMapping();
+    alignMutations=alignMapData.subs.map(p=>({chain:p.wt.chain||'_',resi:p.wt.resi,wtRes:p.wt.resn,mutRes:p.mut.resn,wtCA:pos(p.wt),mutCA:pos(p.mut)}));
+    $('stat-mut').textContent=alignMutations.length;
+    if($('stat-identity'))$('stat-identity').textContent=alignMapData.nAligned?(100*alignMapData.nIdent/alignMapData.nAligned).toFixed(1)+'%':'—';
+    if($('stat-aligned'))$('stat-aligned').textContent=alignMapData.nAligned;
+    renderAlignMutList();return;
+  }
+  if($('stat-identity'))$('stat-identity').textContent='—';if($('stat-aligned'))$('stat-aligned').textContent='—';
   const wtRes={},mutRes={};
   const collect=(m,obj)=>{m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA').forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!obj[k])obj[k]=a})};
   collect(alignModelWT,wtRes);collect(alignModelMut,mutRes);
@@ -950,7 +1063,7 @@ function detectAlignMutations(){
   $('stat-mut').textContent=alignMutations.length;renderAlignMutList();
 }
 function parseAlignManualMut(){const txt=$('mutInput').value.trim();if(!txt)return;alignMutations=[];const parts=txt.split(/[,;，]/);parts.forEach(p=>{const m=p.trim().match(/^([A-Za-z0-9]+):(\d+):([A-Za-z]+)[→:：\-]?([A-Za-z]+)$/);if(m){const[,ch,ri,wr,mr]=m;const findCA=(model)=>{const atoms=model.selectedAtoms({}).filter(a=>!a.hetflag&&(a.chain||'_')===ch&&a.resi==+ri&&(a.atom||'').trim()==='CA');return atoms[0]?pos(atoms[0]):null};const wca=findCA(alignModelWT),mca=findCA(alignModelMut);if(wca&&mca)alignMutations.push({chain:ch,resi:+ri,wtRes:wr.toUpperCase(),mutRes:mr.toUpperCase(),wtCA:wca,mutCA:mca})}});$('stat-mut').textContent=alignMutations.length;renderAlignMutList();if(currentTab==='align')renderAlign()}
-function renderAlignMutList(){const wrap=$('mutList');if(!alignMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';alignMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="alignFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
+function renderAlignMutList(){const wrap=$('mutList');if(!alignMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';if(alignMutations.length>MUT_VISUAL_CAP)html+='<div style="color:#f59e0b;font-size:11px;padding:6px 8px;background:#451a03;border-radius:6px;margin-bottom:6px">检测到 '+alignMutations.length+' 个突变位点（超过 '+MUT_VISUAL_CAP+'），已自动隐藏位移虚线与标签以保证页面流畅。若两份结构差异如此之大，请确认链/残基编号是否对应。</div>';alignMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="alignFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
 function alignFocusMut(idx){if(!alignMutations[idx])return;const m=alignMutations[idx];const mid={x:(m.wtCA.x+m.mutCA.x)/2,y:(m.wtCA.y+m.mutCA.y)/2,z:(m.wtCA.z+m.mutCA.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},10);viewer3d.render()}
 
 function renderAlign(){
@@ -961,12 +1074,12 @@ function renderAlign(){
   const colWT=$('col-wt').value,opWT=+$('op-wt').value;const colMUT=$('col-mut').value,opMUT=+$('op-mut').value;
   if(alignModelWT)viewer3d.setStyle({model:alignModelWT,hetflag:false},{cartoon:{color:colWT,opacity:opWT,arrows:true,style:'rectangle',thickness:0.4}});
   if(alignModelMut)viewer3d.setStyle({model:alignModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
-  if((on('mutLine')||on('mutLabel'))&&alignHasAligned){alignMutations.forEach(mut=>{if(on('mutLine')){viewer3d.addCylinder({start:mut.wtCA,end:mut.mutCA,radius:.06,dashed:true,fromCap:1,toCap:1,color:'#f59e0b'});viewer3d.addSphere({center:mut.wtCA,radius:.22,color:'#22c55e'});viewer3d.addSphere({center:mut.mutCA,radius:.22,color:'#ef4444'})}if(on('mutLabel')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';viewer3d.addLabel(mut.wtRes+mut.resi+'→'+mut.mutRes,{position:mut.mutCA,fontSize:12,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#f59e0b',borderThickness:.8,inFront:true})}})}
+  if((on('mutLine')||on('mutLabel'))&&alignHasAligned&&alignMutations.length<=MUT_VISUAL_CAP){alignMutations.forEach(mut=>{if(on('mutLine')){viewer3d.addCylinder({start:mut.wtCA,end:mut.mutCA,radius:.06,dashed:true,fromCap:1,toCap:1,color:'#f59e0b'});viewer3d.addSphere({center:mut.wtCA,radius:.22,color:'#22c55e'});viewer3d.addSphere({center:mut.mutCA,radius:.22,color:'#ef4444'})}if(on('mutLabel')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';viewer3d.addLabel(mut.wtRes+mut.resi+'→'+mut.mutRes,{position:mut.mutCA,fontSize:12,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#f59e0b',borderThickness:.8,inFront:true})}})}
   if(on('label-align')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=+$('lsize-align').value;const addLabels=(m)=>{if(!m)return;const caAtoms=m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA');caAtoms.forEach(a=>{viewer3d.addLabel((a.resn||'')+(a.resi||''),{position:pos(a),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})})};addLabels(alignModelWT);addLabels(alignModelMut)}
   $('infoTitle').textContent='结构叠加';
   $('infoLine1').innerHTML=alignModelWT?'<b style="color:#22c55e">WT</b> 已载入':'WT: 未载入';
   $('infoLine2').innerHTML=alignModelMut?'<b style="color:#ef4444">Mut</b> 已载入':'Mut: 未载入';
-  $('infoDetail').textContent='RMSD: '+($('stat-rmsd').textContent||'—')+'Å | 突变: '+alignMutations.length+'个';
+  $('infoDetail').textContent='RMSD: '+($('stat-rmsd').textContent||'—')+'Å(核心'+alignCorePairs+'/'+alignPairCount+'对'+(alignAllRmsd!=null?'，全体'+alignAllRmsd.toFixed(2)+'Å':'')+') | 突变: '+alignMutations.length+'个'+((on('seqAlign')&&alignMapData&&alignMapData.nAligned)?' | 一致性: '+(100*alignMapData.nIdent/alignMapData.nAligned).toFixed(1)+'%':'');
   viewer3d.render();
 }
 
@@ -1023,10 +1136,11 @@ function runDiffAlignment(){
   const mutMap=new Map();mutCA.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi;if(!mutMap.has(k))mutMap.set(k,a)});
   const pairs=[];wtMap.forEach((a,k)=>{if(mutMap.has(k))pairs.push({wt:a,mut:mutMap.get(k)})});
   if(pairs.length<3){alert('Partner 链匹配 Cα 不足 3 个');return}
-  const P=pairs.map(p=>pos(p.wt)),Q=pairs.map(p=>pos(p.mut));const{R,t}=kabsch(P,Q);
-  let rmsd=0;pairs.forEach(p=>{const v=pos(p.wt);const rv={x:R[0][0]*v.x+R[0][1]*v.y+R[0][2]*v.z+t.x,y:R[1][0]*v.x+R[1][1]*v.y+R[1][2]*v.z+t.y,z:R[2][0]*v.x+R[2][1]*v.y+R[2][2]*v.z+t.z};rmsd+=dist(rv,pos(p.mut))**2});
-  rmsd=Math.sqrt(rmsd/pairs.length);$('stat-rmsd-diff').textContent=rmsd.toFixed(3);
-  const mutAll=diffModelMut.selectedAtoms({});mutAll.forEach(a=>{const v=pos(a);a.x=R[0][0]*v.x+R[0][1]*v.y+R[0][2]*v.z+t.x;a.y=R[1][0]*v.x+R[1][1]*v.y+R[1][2]*v.z+t.y;a.z=R[2][0]*v.x+R[2][1]*v.y+R[2][2]*v.z+t.z});
+  const fit=kabschCore(pairs,p=>pos(p.mut),p=>pos(p.wt));
+  const{R,t}=fit;
+  if(![R[0][0],R[1][1],R[2][2],t.x,t.y,t.z].every(isFinite)){alert('叠加计算失败：坐标数据异常（含 NaN/Infinity），请检查输入文件');return}
+  const mutAll=diffModelMut.selectedAtoms({});mutAll.forEach(a=>{const v=applyRT(pos(a),R,t);a.x=v.x;a.y=v.y;a.z=v.z});
+  $('stat-rmsd-diff').textContent=fit.rmsd.toFixed(3);
   diffHasAligned=true;diffIxnKey='';diffDetectMutations();if(currentTab==='diff')renderDiff();
 }
 // Mut 复合物中的“突变蛋白”链：优先取显式标记为 mut 的链；若未标记（常见于两份文件链名相同），沿用 WT 蛋白的链名
@@ -1042,7 +1156,7 @@ function diffDetectMutations(){
   Object.keys(wtRes).forEach(k=>{if(mutRes[k]){const w=wtRes[k],m=mutRes[k];if((w.resn||'').toUpperCase()!==(m.resn||'').toUpperCase())diffMutations.push({chain:w.chain||'_',resi:w.resi,wtRes:w.resn,mutRes:m.resn,wtCA:pos(w),mutCA:pos(m)})}});
   $('stat-mut-diff').textContent=diffMutations.length;diffRenderMutList();
 }
-function diffRenderMutList(){const wrap=$('mutList-diff');if(!diffMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';diffMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="diffFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
+function diffRenderMutList(){const wrap=$('mutList-diff');if(!diffMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';if(diffMutations.length>MUT_VISUAL_CAP)html+='<div style="color:#f59e0b;font-size:11px;padding:6px 8px;background:#451a03;border-radius:6px;margin-bottom:6px">检测到 '+diffMutations.length+' 个突变位点（超过 '+MUT_VISUAL_CAP+'），已自动隐藏位移虚线与标签以保证页面流畅。若两份结构差异如此之大，请确认链/残基编号是否对应。</div>';diffMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="diffFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
 function diffFocusMut(idx){if(!diffMutations[idx])return;const m=diffMutations[idx];const mid={x:(m.wtCA.x+m.mutCA.x)/2,y:(m.wtCA.y+m.mutCA.y)/2,z:(m.wtCA.z+m.mutCA.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},10);viewer3d.render()}
 
 function renderDiff(){
@@ -1068,7 +1182,7 @@ function renderDiff(){
   }
   const drawIxn=(ix,isWT)=>{const c=ix.color;const p1=pos(ix.a1),p2=pos(ix.a2);if(ix.type==='SS')viewer3d.addCylinder({start:p1,end:p2,radius:.1,color:c,fromCap:1,toCap:1});else if(isWT)viewer3d.addLine({start:p1,end:p2,color:c,linewidth:2});else viewer3d.addLine({start:p1,end:p2,color:c,dashed:true,linewidth:2})};
   diffWtIxn.forEach(ix=>drawIxn(ix,true));diffMutIxn.forEach(ix=>drawIxn(ix,false));
-  if((on('mutLine')||on('mutLabel'))&&diffHasAligned){diffMutations.forEach(mut=>{if(on('mutLine')){viewer3d.addCylinder({start:mut.wtCA,end:mut.mutCA,radius:.06,dashed:true,fromCap:1,toCap:1,color:'#f59e0b'});viewer3d.addSphere({center:mut.wtCA,radius:.22,color:'#22c55e'});viewer3d.addSphere({center:mut.mutCA,radius:.22,color:'#ef4444'})}if(on('mutLabel')){viewer3d.addLabel(mut.wtRes+mut.resi+'→'+mut.mutRes,{position:mut.mutCA,fontSize:12,fontColor:'#e2e8f0',backgroundColor:'#0f172a',backgroundOpacity:.85,borderColor:'#f59e0b',borderThickness:.8,inFront:true})}})}
+  if((on('mutLine')||on('mutLabel'))&&diffHasAligned&&diffMutations.length<=MUT_VISUAL_CAP){diffMutations.forEach(mut=>{if(on('mutLine')){viewer3d.addCylinder({start:mut.wtCA,end:mut.mutCA,radius:.06,dashed:true,fromCap:1,toCap:1,color:'#f59e0b'});viewer3d.addSphere({center:mut.wtCA,radius:.22,color:'#22c55e'});viewer3d.addSphere({center:mut.mutCA,radius:.22,color:'#ef4444'})}if(on('mutLabel')){viewer3d.addLabel(mut.wtRes+mut.resi+'→'+mut.mutRes,{position:mut.mutCA,fontSize:12,fontColor:'#e2e8f0',backgroundColor:'#0f172a',backgroundOpacity:.85,borderColor:'#f59e0b',borderThickness:.8,inFront:true})}})}
   $('infoTitle').textContent='差异比对';
   $('infoLine1').innerHTML=diffModelWT?'<b style="color:#22c55e">WT-Partner</b> 已载入':'WT: 未载入';
   $('infoLine2').innerHTML=diffModelMut?'<b style="color:#ef4444">Mut-Partner</b> 已载入':'Mut: 未载入';
