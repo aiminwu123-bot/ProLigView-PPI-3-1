@@ -177,6 +177,8 @@ input[type="text"]{width:100%}
         <div class="stat-card"><div class="num" id="nRec-ppi">0</div><div class="label">受体链</div></div>
         <div class="stat-card"><div class="num" id="nLig-ppi">0</div><div class="label">配体链</div></div>
       </div>
+      <div style="font-size:11px;color:#64748b;margin:10px 0 4px">链配色（默认自动调色板，可逐链修改）</div>
+      <div id="chainColors-ppi"></div>
     </div>
   </div>
   <div class="panel open">
@@ -230,6 +232,13 @@ input[type="text"]{width:100%}
         <div class="stat-card"><div class="num" id="stat-vw-ppi">0</div><div class="label">vdW</div></div>
       </div>
       <div id="ixnTableWrap-ppi" style="max-height:220px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px"><div class="ixn-empty">暂无互作数据</div></div>
+    </div>
+  </div>
+  <div class="panel open">
+    <div class="panel-head" onclick="togglePanel(this.parentElement)"><b>分析结论</b><span class="arrow">▶</span></div>
+    <div class="panel-body">
+      <div id="conclusion-ppi" style="font-size:11.5px;line-height:1.7;color:#cbd5e1">载入结构并设定互作链后自动生成结论</div>
+      <button class="btn btn-sm btn-secondary" onclick="exportConclusionTxt()" style="margin-top:8px">导出结论 (TXT)</button>
     </div>
   </div>
   <button class="btn" onclick="exportPng()">导出 PNG</button>
@@ -350,6 +359,7 @@ input[type="text"]{width:100%}
         <div class="diff-card mut-only"><div class="num" id="diff-mut-only">0</div><div class="label">Mut 特有(获得)</div></div>
       </div>
       <div id="diffList" style="max-height:200px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px"><div class="ixn-empty">请先完成结构叠加与互作检测</div></div>
+      <div id="conclusion-diff" style="font-size:11.5px;line-height:1.7;color:#cbd5e1;margin-top:8px;padding:8px;background:#111827;border-radius:6px;border-left:3px solid #f59e0b">完成差异分析后自动生成结论</div>
     </div>
   </div>
   <div class="panel">
@@ -647,7 +657,9 @@ function detectPPI(model, proteinChains, partnerChains) {
 let ppiModel = null;
 let ppiChains = [];
 let ppiChainRoles = {};
+let ppiChainColors = {};
 let ppiIxnData = [];
+const PPI_CHAIN_PALETTE = ['#E38C8C','#6E93D6','#E0C060','#B58FD6','#8FC6E0','#5FB98F','#C0C0C8','#7F8FA6','#F0A35E','#A3D9A5'];
 
 // 配色板
 const PROT_PALETTE = [['#5FB98F','sea green'],['#6E93D6','cornflower'],['#B58FD6','med purple'],['#E0C060','goldenrod'],['#E38C8C','salmon'],['#8FC6E0','sky blue'],['#C0C0C8','silver'],['#7F8FA6','slate']];
@@ -671,6 +683,7 @@ function ppiLoad(f){
     const all=ppiModel.selectedAtoms({});
     ppiChains=[...new Set(all.filter(a=>!a.hetflag).map(a=>a.chain||'_'))].sort();
     ppiChainRoles={};ppiChains.forEach((ch,i)=>{ppiChainRoles[ch]=i===0?'receptor':'ligand'});
+    ppiChainColors={};ppiChains.forEach((ch,i)=>{ppiChainColors[ch]=PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]});
     ppiCacheKey='';ppiDrawKey='';
     ppiBuildChainUI();
     $('hint').style.display='none';
@@ -682,6 +695,15 @@ function ppiLoad(f){
 function ppiBuildChainUI(){
   const grid=$('chainGrid-ppi');grid.innerHTML='';
   ppiChains.forEach(ch=>{const div=document.createElement('div');div.className='chain-chip '+(ppiChainRoles[ch]||'');div.textContent='Chain '+ch;div.onclick=()=>ppiCycleRole(ch,div);grid.appendChild(div)});
+  // 逐链颜色选择器
+  const crow=$('chainColors-ppi');crow.innerHTML='';
+  ppiChains.forEach(ch=>{
+    const row=document.createElement('div');row.className='row';row.style.margin='4px 0';
+    const lab=document.createElement('span');lab.style.cssText='font-size:11.5px;color:#cbd5e1';lab.textContent='Chain '+ch;
+    const inp=document.createElement('input');inp.type='color';inp.value=ppiChainColors[ch]||'#5FB98F';
+    inp.oninput=()=>{ppiChainColors[ch]=inp.value;if(currentTab==='ppi')renderPPI()};
+    row.appendChild(lab);row.appendChild(inp);crow.appendChild(row);
+  });
   ppiUpdateStats();
   $('infoTitle').textContent='结构信息';
   $('infoLine1').innerHTML=ppiChains.map(c=>'<b>Chain '+c+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':'配体')+')').join(' · ');
@@ -791,8 +813,7 @@ function renderPPI(){
   if(ck!==ppiCacheKey){computePPI();ppiCacheKey=ck;ppiDrawKey='';}
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
   viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:op,arrows:true,style:'rectangle',thickness:0.4}});
-  const CHAIN_COLORS=['marine','forest','lightorange','violet','wheat','salmon','lightblue','palegreen','lightpink','grey70'];
-  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:CHAIN_COLORS[i%CHAIN_COLORS.length],opacity:op,arrows:true,style:'rectangle',thickness:0.4}})});
+  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:op,arrows:true,style:'rectangle',thickness:0.4}})});
   const resStickR=rad*0.7;
   if(on('pocket-ppi')){
     const byChain={};
@@ -818,6 +839,7 @@ function renderPPI(){
     }
   }
   ppiUpdateStatsTable();
+  ppiUpdateConclusion();
   $('infoTitle').textContent='结构信息';
   $('infoLine1').innerHTML=ppiChains.map(c=>'<b>Chain '+c+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':(ppiChainRoles[c]==='ligand'?'配体':'未选'))+')').join(' · ');
   $('infoLine2').textContent='界面残基: '+ppiIfaceArr.length+' 个 | 接触对: '+ppiIxnData.length+' 对';
@@ -833,6 +855,42 @@ function ppiUpdateStatsTable(){
   let html='<table class="ixn-table"><thead><tr><th>类型</th><th>链A</th><th>残基A</th><th>链B</th><th>残基B</th><th>详情</th></tr></thead><tbody>';
   ppiIxnData.forEach((ix,i)=>{const a1=ix.a1,a2=ix.a2;const resA=(a1.resn||'')+(a1.resi||''),resB=(a2.resn||'')+(a2.resi||'');const chA=a1.chain||'_',chB=a2.chain||'_';html+='<tr onclick="ppiFocusIxn('+i+')" style="border-left:3px solid '+colorMap[ix.type]+'"><td><span class="badge" style="background:'+colorMap[ix.type]+'20;color:'+colorMap[ix.type]+';border:1px solid '+colorMap[ix.type]+'">'+typeMap[ix.type]+'</span></td><td>'+chA+'</td><td>'+resA+'</td><td>'+chB+'</td><td>'+resB+'</td><td style="font-size:10px;color:#94a3b8">'+ix.detail+'</td></tr>'});
   html+='</tbody></table>';wrap.innerHTML=html;
+}
+// ==================== 结论生成 ====================
+const IXN_TYPE_CN = {'HB':'氢键','SB':'盐桥','HY':'疏水','ππ':'π-π','πCat':'π-Cat','SS':'二硫键','XB':'卤键','vdW':'vdW'};
+function resLabel(a){ return (a.chain||'_')+':'+(a.resn||'')+(a.resi||''); }
+function ppiUpdateConclusion(){
+  const el=$('conclusion-ppi');if(!el)return;
+  const recChains=ppiChains.filter(c=>ppiChainRoles[c]==='receptor');
+  const ligChains=ppiChains.filter(c=>ppiChainRoles[c]==='ligand');
+  if(!ppiModel||!recChains.length||!ligChains.length){el.textContent='请先载入结构并至少各选一条受体链与配体链。';return}
+  const c=t=>ppiIxnData.filter(x=>x.type===t).length;
+  const order=['HB','SB','HY','ππ','πCat','SS','XB','vdW'];
+  const parts=order.filter(t=>c(t)>0).map(t=>IXN_TYPE_CN[t]+' '+c(t)+' 对');
+  // 关键残基：参与接触最多的前 5 个
+  const cnt={};
+  ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=resLabel(a);cnt[k]=(cnt[k]||0)+1}})});
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>k+'('+v+')');
+  // 特异性互作（非 vdW）明细
+  const spec=ppiIxnData.filter(x=>x.type!=='vdW').slice(0,8).map(x=>IXN_TYPE_CN[x.type]+' '+resLabel(x.a1)+' ↔ '+resLabel(x.a2));
+  const specN=ppiIxnData.filter(x=>x.type!=='vdW').length;
+  // 经验性强度评估（以氢键+盐桥+π 作用等特异性互作数量计）
+  const strong=c('HB')+c('SB')+c('ππ')+c('πCat')+c('SS')+c('XB');
+  const level=strong>=10?'较强（特异性互作丰富）':strong>=4?'中等':strong>=1?'较弱（以 vdW/疏水为主）':'未检测到明显相互作用';
+  const noH=!ppiModel.selectedAtoms({}).some(isHydrogen);
+  el.innerHTML=
+    '<b style="color:#22d3ee">界面概况</b>：受体链 '+recChains.join(',')+' ↔ 配体链 '+ligChains.join(',')+'；界面残基 '+ppiIfaceArr.length+' 个，接触对 '+ppiIxnData.length+' 对。<br>'+
+    '<b style="color:#22d3ee">作用力构成</b>：'+(parts.length?parts.join('，'):'无')+'。<br>'+
+    '<b style="color:#22d3ee">关键残基</b>（接触频次 Top5）：'+(top.length?top.join('，'):'无')+'。<br>'+
+    (spec.length?'<b style="color:#22d3ee">特异性互作</b>（前 '+Math.min(8,specN)+' 项）：'+spec.join('；')+'<br>':'')+
+    '<b style="color:#f59e0b">综合评估</b>：界面结合强度<b>'+level+'</b>（经验性参考：氢键+盐桥+π 类等特异性互作共 '+strong+' 对）。'+
+    (noH?'<br><span style="color:#64748b">注：结构无氢原子，氢键按 D···A 距离近似判定，建议结合实验数据验证。</span>':'');
+}
+function exportConclusionTxt(){
+  const el=$('conclusion-ppi');
+  if(!el||!el.textContent.trim()){alert('暂无结论可导出');return}
+  const blob=new Blob([el.textContent],{type:'text/plain;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_分析结论.txt';a.click();URL.revokeObjectURL(url);
 }
 function ppiFocusIxn(idx){if(!ppiIxnData[idx])return;const ix=ppiIxnData[idx];const c1=pos(ix.a1),c2=pos(ix.a2);const mid={x:(c1.x+c2.x)/2,y:(c1.y+c2.y)/2,z:(c1.z+c2.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},8);viewer3d.render()}
 
@@ -1027,6 +1085,27 @@ function diffCompare(){
   $('diff-mut-only').textContent=diffResults.filter(d=>d.diff==='gained').length;
   $('diff-both').textContent=diffResults.filter(d=>d.diff==='both').length;
   diffRenderDiffList();
+  diffUpdateConclusion();
+}
+function diffUpdateConclusion(){
+  const el=$('conclusion-diff');if(!el)return;
+  const lost=diffResults.filter(d=>d.diff==='lost'),gained=diffResults.filter(d=>d.diff==='gained'),both=diffResults.filter(d=>d.diff==='both');
+  const byType=(arr)=>{const m={};arr.forEach(d=>{m[d.type]=(m[d.type]||0)+1});return Object.entries(m).map(([t,n])=>IXN_TYPE_CN[t]+' '+n+' 对').join('、')||'无'};
+  const fmtList=(arr)=>arr.slice(0,5).map(d=>'• '+IXN_TYPE_CN[d.type]+' '+resLabel(d.a1)+' ↔ '+resLabel(d.a2)+'（'+d.detail+'）').join('<br>');
+  let html='<b style="color:#f59e0b">【差异比对结论】</b><br>';
+  html+='WT 丢失 <b style="color:#ef4444">'+lost.length+'</b> 项（'+byType(lost)+'）；Mut 获得 <b style="color:#22c55e">'+gained.length+'</b> 项（'+byType(gained)+'）；两者共有 '+both.length+' 项。<br>';
+  html+='突变位点：<b>'+diffMutations.length+'</b> 处'+(diffMutations.length?'（'+diffMutations.slice(0,6).map(m=>m.chain+':'+m.wtRes+m.resi+'→'+m.mutRes).join('，')+(diffMutations.length>6?' 等':'')+'）':'')+'。<br>';
+  const specLost=lost.filter(d=>d.type!=='vdW').length,specGained=gained.filter(d=>d.type!=='vdW').length;
+  let verdict;
+  if(specLost===0&&specGained===0)verdict='特异性互作（氢键/盐桥/π 等）未发生改变，突变对界面互作<b>影响有限</b>。';
+  else if(specLost>specGained*2)verdict='突变后特异性互作明显减少，界面结合<b>可能削弱</b>，建议结合突变位点的结构位置重点核查丢失项。';
+  else if(specGained>specLost*2)verdict='突变后特异性互作明显增加，界面结合<b>可能增强</b>。';
+  else verdict='互作网络发生重构（有丢失也有获得），突变对界面的影响需结合丢失/获得互作的残基位置综合判断。';
+  html+='综合判断：'+verdict+'<br>';
+  if(lost.length)html+='<span style="color:#f87171">WT 特有（丢失）：</span><br>'+fmtList(lost)+'<br>';
+  if(gained.length)html+='<span style="color:#4ade80">Mut 特有（获得）：</span><br>'+fmtList(gained)+'<br>';
+  html+='<span style="color:#64748b;font-size:10px">结论为基于几何规则的自动化评估，仅供参考，需结合实验数据验证。</span>';
+  el.innerHTML=html;
 }
 function diffRenderDiffList(){
   const wrap=$('diffList');if(!diffResults.length){wrap.innerHTML='<div class="ixn-empty">请先完成结构叠加与互作检测</div>';return}
