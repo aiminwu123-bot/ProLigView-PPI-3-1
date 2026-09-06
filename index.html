@@ -213,6 +213,9 @@ input[type="text"]{width:100%}
       <div class="row"><span>Cartoon 透明度</span><input id="op-ppi" type="range" min="0.1" max="1" step="0.05" value="0.8"></div>
       <div class="row"><span>棒粗细</span><input id="rad-ppi" type="range" min="0.08" max="0.35" step="0.01" value="0.16"></div>
       <div class="row"><span>显示界面残基侧链</span><i id="pocket-ppi" class="toggle on"></i></div>
+      <div class="row"><span>界面聚焦（淡化非界面）</span><i id="focus-ppi" class="toggle on"></i></div>
+      <div class="row"><span>非界面透明度</span><input id="focusop-ppi" type="range" min="0.02" max="0.6" step="0.02" value="0.25"></div>
+      <div class="row"><span>显示分子表面</span><i id="surf-ppi" class="toggle"></i></div>
       <div class="row"><span>显示残基标签</span><i id="label-ppi" class="toggle on"></i></div>
       <div class="row"><span>标签字号</span><input id="lsize-ppi" type="range" min="9" max="18" step="1" value="11"></div>
       <div class="row"><span>氢显示</span><select id="hmode-ppi"><option value="polar">仅极性</option><option value="all">全部</option><option value="none">隐藏</option></select></div>
@@ -673,9 +676,9 @@ $('drop-ppi').onclick=()=>$('file-ppi').click();
 $('file-ppi').onchange=e=>ppiLoad(e.target.files[0]);
 $('drop-ppi').ondragover=e=>e.preventDefault();
 $('drop-ppi').ondrop=e=>{e.preventDefault();ppiLoad(e.dataTransfer.files[0])};
-['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
+['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi','focus-ppi','surf-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
 const ppiDebounced = debounce(()=>{ if(currentTab==='ppi') renderPPI(); }, 150);
-['bg-ppi','pc-ppi','op-ppi','rad-ppi','hmode-ppi','lsize-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
+['bg-ppi','pc-ppi','op-ppi','rad-ppi','hmode-ppi','lsize-ppi','focusop-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
 
 function ppiLoad(f){
   const r=new FileReader();
@@ -814,23 +817,40 @@ function renderPPI(){
   const dark=bg!=='white';const pc=$('pc-ppi').value,op=num('op-ppi',0.8),rad=num('rad-ppi',0.16);
   const ck=ppiComputeKey();
   if(ck!==ppiCacheKey){computePPI();ppiCacheKey=ck;ppiDrawKey='';}
+  // 界面聚焦：非界面残基降透明度，界面残基全彩突出
+  const focus=on('focus-ppi'),dimOp=num('focusop-ppi',0.25);
+  const baseOp=focus?dimOp:op;
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
-  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:op,arrows:true,style:'rectangle',thickness:0.4}});
-  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:op,arrows:true,style:'rectangle',thickness:0.4}})});
+  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
+  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
   const resStickR=rad*0.7;
-  if(on('pocket-ppi')){
+  // 界面残基最终覆盖层：cartoon 与 stick 合并在同一次 setStyle（3Dmol setStyle 是整体替换，分开调用会互相清掉）
+  const pocket=on('pocket-ppi');
+  if(focus||pocket){
     const byChain={};
-    ppiIfaceArr.forEach(k=>{const[c,r,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
+    ppiIfaceArr.forEach(k=>{const[c,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
     Object.entries(byChain).forEach(([c,resis])=>{
-      viewer3d.setStyle({model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false,elem:['N','O','S']},{cartoon:{opacity:op},stick:{radius:resStickR,colorscheme:'Jmol'}});
-      viewer3d.setStyle({model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false,elem:'C'},{cartoon:{opacity:op},stick:{radius:resStickR,color:'#9aa7b4'}});
+      const col=ppiChainColors[c]||PPI_CHAIN_PALETTE[ppiChains.indexOf(c)%PPI_CHAIN_PALETTE.length];
+      const cart={color:col,opacity:(focus?1.0:op),arrows:true,style:'rectangle',thickness:0.4};
+      const sel={model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false};
+      if(pocket){
+        viewer3d.setStyle({model:sel.model,chain:sel.chain,resi:sel.resi,hetflag:false,elem:['N','O','S']},{cartoon:cart,stick:{radius:resStickR,colorscheme:'Jmol'}});
+        viewer3d.setStyle({model:sel.model,chain:sel.chain,resi:sel.resi,hetflag:false,elem:'C'},{cartoon:cart,stick:{radius:resStickR,color:'#9aa7b4'}});
+      }else{
+        viewer3d.setStyle(sel,{cartoon:cart});
+      }
     });
   }
   // 形状与标签只在计算结果或标签参数变化时重建（虚线/标签创建是最大开销）
-  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg;
+  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0);
   if(dk!==ppiDrawKey){
     ppiDrawKey=dk;
     viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
+    if(on('surf-ppi')){
+      ppiChains.forEach((ch,i)=>{
+        viewer3d.addSurface('VWS',{opacity:0.72,color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]},{model:ppiModel,chain:ch,hetflag:false});
+      });
+    }
     ppiIxnData.forEach(ix=>{
       if(ix.type==='SS')viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:.12,color:ix.color,fromCap:1,toCap:1});
       else viewer3d.addLine({start:ix.p1,end:ix.p2,color:ix.color,dashed:true,linewidth:2});
