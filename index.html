@@ -213,6 +213,9 @@ input[type="text"]{width:100%}
       <div class="row"><span>Cartoon 透明度</span><input id="op-ppi" type="range" min="0.1" max="1" step="0.05" value="0.8"></div>
       <div class="row"><span>棒粗细</span><input id="rad-ppi" type="range" min="0.08" max="0.35" step="0.01" value="0.16"></div>
       <div class="row"><span>显示界面残基侧链</span><i id="pocket-ppi" class="toggle on"></i></div>
+      <div class="row"><span>界面聚焦（淡化非界面）</span><i id="focus-ppi" class="toggle on"></i></div>
+      <div class="row"><span>非界面透明度</span><input id="focusop-ppi" type="range" min="0.02" max="0.6" step="0.02" value="0.25"></div>
+      <div class="row"><span>显示分子表面</span><i id="surf-ppi" class="toggle"></i></div>
       <div class="row"><span>显示残基标签</span><i id="label-ppi" class="toggle on"></i></div>
       <div class="row"><span>标签字号</span><input id="lsize-ppi" type="range" min="9" max="18" step="1" value="11"></div>
       <div class="row"><span>氢显示</span><select id="hmode-ppi"><option value="polar">仅极性</option><option value="all">全部</option><option value="none">隐藏</option></select></div>
@@ -673,9 +676,9 @@ $('drop-ppi').onclick=()=>$('file-ppi').click();
 $('file-ppi').onchange=e=>ppiLoad(e.target.files[0]);
 $('drop-ppi').ondragover=e=>e.preventDefault();
 $('drop-ppi').ondrop=e=>{e.preventDefault();ppiLoad(e.dataTransfer.files[0])};
-['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
+['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi','focus-ppi','surf-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
 const ppiDebounced = debounce(()=>{ if(currentTab==='ppi') renderPPI(); }, 150);
-['bg-ppi','pc-ppi','op-ppi','rad-ppi','hmode-ppi','lsize-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
+['bg-ppi','pc-ppi','op-ppi','rad-ppi','hmode-ppi','lsize-ppi','focusop-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
 
 function ppiLoad(f){
   const r=new FileReader();
@@ -814,23 +817,40 @@ function renderPPI(){
   const dark=bg!=='white';const pc=$('pc-ppi').value,op=num('op-ppi',0.8),rad=num('rad-ppi',0.16);
   const ck=ppiComputeKey();
   if(ck!==ppiCacheKey){computePPI();ppiCacheKey=ck;ppiDrawKey='';}
+  // 界面聚焦：非界面残基降透明度，界面残基全彩突出
+  const focus=on('focus-ppi'),dimOp=num('focusop-ppi',0.25);
+  const baseOp=focus?dimOp:op;
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
-  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:op,arrows:true,style:'rectangle',thickness:0.4}});
-  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:op,arrows:true,style:'rectangle',thickness:0.4}})});
+  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
+  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
   const resStickR=rad*0.7;
-  if(on('pocket-ppi')){
+  // 界面残基最终覆盖层：cartoon 与 stick 合并在同一次 setStyle（3Dmol setStyle 是整体替换，分开调用会互相清掉）
+  const pocket=on('pocket-ppi');
+  if(focus||pocket){
     const byChain={};
-    ppiIfaceArr.forEach(k=>{const[c,r,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
+    ppiIfaceArr.forEach(k=>{const[c,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
     Object.entries(byChain).forEach(([c,resis])=>{
-      viewer3d.setStyle({model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false,elem:['N','O','S']},{cartoon:{opacity:op},stick:{radius:resStickR,colorscheme:'Jmol'}});
-      viewer3d.setStyle({model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false,elem:'C'},{cartoon:{opacity:op},stick:{radius:resStickR,color:'#9aa7b4'}});
+      const col=ppiChainColors[c]||PPI_CHAIN_PALETTE[ppiChains.indexOf(c)%PPI_CHAIN_PALETTE.length];
+      const cart={color:col,opacity:(focus?1.0:op),arrows:true,style:'rectangle',thickness:0.4};
+      const sel={model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false};
+      if(pocket){
+        viewer3d.setStyle({model:sel.model,chain:sel.chain,resi:sel.resi,hetflag:false,elem:['N','O','S']},{cartoon:cart,stick:{radius:resStickR,colorscheme:'Jmol'}});
+        viewer3d.setStyle({model:sel.model,chain:sel.chain,resi:sel.resi,hetflag:false,elem:'C'},{cartoon:cart,stick:{radius:resStickR,color:'#9aa7b4'}});
+      }else{
+        viewer3d.setStyle(sel,{cartoon:cart});
+      }
     });
   }
   // 形状与标签只在计算结果或标签参数变化时重建（虚线/标签创建是最大开销）
-  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg;
+  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0);
   if(dk!==ppiDrawKey){
     ppiDrawKey=dk;
     viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
+    if(on('surf-ppi')){
+      ppiChains.forEach((ch,i)=>{
+        viewer3d.addSurface('VWS',{opacity:0.72,color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]},{model:ppiModel,chain:ch,hetflag:false});
+      });
+    }
     ppiIxnData.forEach(ix=>{
       if(ix.type==='SS')viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:.12,color:ix.color,fromCap:1,toCap:1});
       else viewer3d.addLine({start:ix.p1,end:ix.p2,color:ix.color,dashed:true,linewidth:2});
@@ -895,7 +915,11 @@ function exportConclusionTxt(){
   const blob=new Blob([el.textContent],{type:'text/plain;charset=utf-8;'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_分析结论.txt';a.click();URL.revokeObjectURL(url);
 }
-function ppiFocusIxn(idx){if(!ppiIxnData[idx])return;const ix=ppiIxnData[idx];const c1=pos(ix.a1),c2=pos(ix.a2);const mid={x:(c1.x+c2.x)/2,y:(c1.y+c2.y)/2,z:(c1.z+c2.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},8);viewer3d.render()}
+// 精确聚焦工具：3Dmol 的 zoomTo 第一个参数是原子选择器（不是坐标），
+// 这里按目标残基的全部原子计算包围盒并动画居中
+function atomsOfResidue(model,chain,resi){if(!model)return[];return model.selectedAtoms({}).filter(a=>!a.hetflag&&(a.chain||'_')===chain&&a.resi===resi)}
+function zoomToAtoms(atoms){if(!atoms||!atoms.length)return;const serials=atoms.map(a=>a.serial).filter(s=>typeof s==='number');if(serials.length===atoms.length)viewer3d.zoomTo({serial:serials});else{const a=atoms[0];viewer3d.zoomTo({chain:a.chain||'_',resi:a.resi})}viewer3d.render()}
+function ppiFocusIxn(idx){const ix=ppiIxnData[idx];if(!ix)return;const atoms=atomsOfResidue(ppiModel,ix.a1.chain||'_',ix.a1.resi).concat(atomsOfResidue(ppiModel,ix.a2.chain||'_',ix.a2.resi));zoomToAtoms(atoms)}
 
 // ==================== Align 模块状态 ====================
 let alignModelWT=null, alignModelMut=null;
@@ -1064,7 +1088,7 @@ function detectAlignMutations(){
 }
 function parseAlignManualMut(){const txt=$('mutInput').value.trim();if(!txt)return;alignMutations=[];const parts=txt.split(/[,;，]/);parts.forEach(p=>{const m=p.trim().match(/^([A-Za-z0-9]+):(\d+):([A-Za-z]+)[→:：\-]?([A-Za-z]+)$/);if(m){const[,ch,ri,wr,mr]=m;const findCA=(model)=>{const atoms=model.selectedAtoms({}).filter(a=>!a.hetflag&&(a.chain||'_')===ch&&a.resi==+ri&&(a.atom||'').trim()==='CA');return atoms[0]?pos(atoms[0]):null};const wca=findCA(alignModelWT),mca=findCA(alignModelMut);if(wca&&mca)alignMutations.push({chain:ch,resi:+ri,wtRes:wr.toUpperCase(),mutRes:mr.toUpperCase(),wtCA:wca,mutCA:mca})}});$('stat-mut').textContent=alignMutations.length;renderAlignMutList();if(currentTab==='align')renderAlign()}
 function renderAlignMutList(){const wrap=$('mutList');if(!alignMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';if(alignMutations.length>MUT_VISUAL_CAP)html+='<div style="color:#f59e0b;font-size:11px;padding:6px 8px;background:#451a03;border-radius:6px;margin-bottom:6px">检测到 '+alignMutations.length+' 个突变位点（超过 '+MUT_VISUAL_CAP+'），已自动隐藏位移虚线与标签以保证页面流畅。若两份结构差异如此之大，请确认链/残基编号是否对应。</div>';alignMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="alignFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
-function alignFocusMut(idx){if(!alignMutations[idx])return;const m=alignMutations[idx];const mid={x:(m.wtCA.x+m.mutCA.x)/2,y:(m.wtCA.y+m.mutCA.y)/2,z:(m.wtCA.z+m.mutCA.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},10);viewer3d.render()}
+function alignFocusMut(idx){const m=alignMutations[idx];if(!m)return;const atoms=atomsOfResidue(alignModelWT,m.chain,m.resi).concat(atomsOfResidue(alignModelMut,m.chain,m.resi));zoomToAtoms(atoms)}
 
 function renderAlign(){
   if(currentTab!=='align')return;
@@ -1088,6 +1112,7 @@ let diffModelWT=null, diffModelMut=null;
 let diffAllChains=[], diffChainRoles={}, diffMutations=[], diffHasAligned=false;
 let diffWtIxn=[], diffMutIxn=[], diffResults=[];
 let diffIxnKey='';
+let diffResultsView=[];
 
 // 事件
 setupDropDiff('drop-wt-diff','file-wt-diff','WT');
@@ -1116,8 +1141,23 @@ function diffLoadFile(f,label){
   }catch(e){alert('解析失败: '+e.message);console.error(e)}};
   r.readAsText(f);
 }
-function diffBuildChainUI(){const grid=$('chainGrid-diff');grid.innerHTML='';diffAllChains.forEach(ch=>{const div=document.createElement('div');div.className='chain-chip '+(diffChainRoles[ch]||'');div.textContent='Chain '+ch;div.onclick=()=>diffCycleRole(ch,div);grid.appendChild(div)});diffUpdateStats()}
-function diffCycleRole(ch,el){const order=['','wt','mut','partner'];const cur=diffChainRoles[ch]||'';const idx=order.indexOf(cur);diffChainRoles[ch]=order[(idx+1)%order.length];el.className='chain-chip '+(diffChainRoles[ch]||'');diffUpdateStats();diffUpdateAnchorSelect();if(currentTab==='diff')renderDiff()}
+// 链角色 UI：每条链一行下拉直选，选中即生效（替代原来的点 chip 循环切换）
+const DIFF_ROLE_COLOR={'':'#334155',wt:'#22c55e',mut:'#ef4444',partner:'#a855f7'};
+const DIFF_ROLE_TEXT={'':'#94a3b8',wt:'#22c55e',mut:'#ef4444',partner:'#a855f7'};
+const DIFF_ROLE_OPTIONS=[['','— 未参与 —'],['wt','WT 蛋白'],['mut','Mut 蛋白'],['partner','Partner（互作对方）']];
+function diffBuildChainUI(){
+  const grid=$('chainGrid-diff');grid.innerHTML='';grid.style.display='block';
+  diffAllChains.forEach(ch=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0';
+    const lab=document.createElement('span');lab.style.cssText='font-size:11px;color:#e2e8f0;min-width:56px;font-weight:600';lab.textContent='Chain '+ch;
+    const sel=document.createElement('select');sel.style.cssText='flex:1;background:#1e293b;border:1px solid '+DIFF_ROLE_COLOR[diffChainRoles[ch]||'']+';color:'+DIFF_ROLE_TEXT[diffChainRoles[ch]||'']+';border-radius:6px;padding:4px 6px;font-size:11px;outline:none;cursor:pointer';
+    DIFF_ROLE_OPTIONS.forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;o.style.color='#e2e8f0';sel.appendChild(o)});
+    sel.value=diffChainRoles[ch]||'';
+    sel.onchange=()=>{diffChainRoles[ch]=sel.value;sel.style.borderColor=DIFF_ROLE_COLOR[sel.value];sel.style.color=DIFF_ROLE_TEXT[sel.value];diffUpdateStats();diffUpdateAnchorSelect();if(currentTab==='diff')renderDiff()};
+    row.appendChild(lab);row.appendChild(sel);grid.appendChild(row);
+  });
+  diffUpdateStats();
+}
 function diffAutoAssign(){diffAllChains.forEach(ch=>{if(!diffChainRoles[ch])diffChainRoles[ch]='partner'});diffBuildChainUI();if(currentTab==='diff')renderDiff()}
 function diffClearChains(){diffAllChains.forEach(c=>diffChainRoles[c]='');diffBuildChainUI();if(currentTab==='diff')renderDiff()}
 function diffUpdateStats(){$('nWT-diff').textContent=diffAllChains.filter(c=>diffChainRoles[c]==='wt').length;$('nMut-diff').textContent=diffAllChains.filter(c=>diffChainRoles[c]==='mut').length;$('nPartner-diff').textContent=diffAllChains.filter(c=>diffChainRoles[c]==='partner').length}
@@ -1157,7 +1197,7 @@ function diffDetectMutations(){
   $('stat-mut-diff').textContent=diffMutations.length;diffRenderMutList();
 }
 function diffRenderMutList(){const wrap=$('mutList-diff');if(!diffMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';if(diffMutations.length>MUT_VISUAL_CAP)html+='<div style="color:#f59e0b;font-size:11px;padding:6px 8px;background:#451a03;border-radius:6px;margin-bottom:6px">检测到 '+diffMutations.length+' 个突变位点（超过 '+MUT_VISUAL_CAP+'），已自动隐藏位移虚线与标签以保证页面流畅。若两份结构差异如此之大，请确认链/残基编号是否对应。</div>';diffMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="diffFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
-function diffFocusMut(idx){if(!diffMutations[idx])return;const m=diffMutations[idx];const mid={x:(m.wtCA.x+m.mutCA.x)/2,y:(m.wtCA.y+m.mutCA.y)/2,z:(m.wtCA.z+m.mutCA.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},10);viewer3d.render()}
+function diffFocusMut(idx){const m=diffMutations[idx];if(!m)return;const atoms=atomsOfResidue(diffModelWT,m.chain,m.resi).concat(atomsOfResidue(diffModelMut,m.chain,m.resi));zoomToAtoms(atoms)}
 
 function renderDiff(){
   if(currentTab!=='diff')return;
@@ -1227,9 +1267,10 @@ function diffRenderDiffList(){
   const colorMap={'HB':'#facc15','SB':'#f97316','HY':'#a3a3a3','ππ':'#22c55e','πCat':'#38bdf8','SS':'#ef4444','XB':'#06b6d4','vdW':'#c084fc'};
   const order={'lost':0,'gained':1,'both':2};
   const sorted=diffResults.slice().sort((a,b)=>order[a.diff]-order[b.diff]);
+  diffResultsView=sorted;
   let html='';sorted.forEach((d,i)=>{const a1=d.a1,a2=d.a2;const resA=(a1.resn||'')+(a1.resi||''),resB=(a2.resn||'')+(a2.resi||'');const chA=a1.chain||'_',chB=a2.chain||'_';const cls=d.diff==='lost'?'lost':(d.diff==='gained'?'gained':'changed');const badgeColor=d.diff==='lost'?'#ef4444':(d.diff==='gained'?'#22c55e':'#22d3ee');html+='<div class="diff-row '+cls+'" onclick="diffFocusDiff('+i+')">'+'<span class="badge" style="background:'+badgeColor+'20;color:'+badgeColor+';border:1px solid '+badgeColor+';font-size:10px;padding:1px 4px;border-radius:4px">'+d.diffLabel+'</span>'+'<span style="color:'+colorMap[d.type]+';font-size:10px;font-weight:700;margin-left:4px">'+typeMap[d.type]+'</span>'+'<span style="color:#94a3b8;font-size:10px;flex:1;margin-left:6px">'+chA+resA+' ↔ '+chB+resB+' '+d.detail+'</span></div>'});wrap.innerHTML=html;
 }
-function diffFocusDiff(idx){if(!diffResults[idx])return;const d=diffResults[idx];const c1=pos(d.a1),c2=pos(d.a2);const mid={x:(c1.x+c2.x)/2,y:(c1.y+c2.y)/2,z:(c1.z+c2.z)/2};viewer3d.zoomTo({x:mid.x,y:mid.y,z:mid.z},8);viewer3d.render()}
+function diffFocusDiff(idx){const d=diffResultsView[idx]||diffResults[idx];if(!d)return;let atoms=[];[diffModelWT,diffModelMut].forEach(m=>{atoms=atoms.concat(atomsOfResidue(m,d.a1.chain||'_',d.a1.resi));atoms=atoms.concat(atomsOfResidue(m,d.a2.chain||'_',d.a2.resi))});zoomToAtoms(atoms)}
 function updateDiffStats(){const count=(arr,t)=>arr.filter(x=>x.type===t).length;const map={HB:'hb',SB:'sb',HY:'hy','ππ':'pp','πCat':'pc',SS:'ss'};Object.entries(map).forEach(([t,suf])=>{if($('wt-stat-'+suf))$('wt-stat-'+suf).textContent=count(diffWtIxn,t);if($('mut-stat-'+suf))$('mut-stat-'+suf).textContent=count(diffMutIxn,t)})}
 function exportDiffCSV(){if(!diffResults.length){alert('暂无差异数据');return}const typeMap={'HB':'氢键','SB':'盐桥','HY':'疏水','ππ':'π-π','πCat':'π-Cat','SS':'二硫键','XB':'卤键','vdW':'vdW'};let csv='差异类型,互作类型,链A,残基A,链B,残基B,详情,距离\n';diffResults.forEach(d=>{const a1=d.a1,a2=d.a2;csv+=d.diffLabel+','+typeMap[d.type]+','+(a1.chain||'_')+','+(a1.resn||'')+(a1.resi||'')+','+(a2.chain||'_')+','+(a2.resn||'')+(a2.resi||'')+','+d.detail+','+d.score.toFixed(3)+'\n'});const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_Diff_Report.csv';a.click();URL.revokeObjectURL(url)}
 </script>
