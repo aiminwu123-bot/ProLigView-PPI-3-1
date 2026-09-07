@@ -497,6 +497,12 @@ const HYDROPHOBIC = ['ALA','VAL','LEU','ILE','MET','PHE','TRP','PRO','TYR'];
 const HALOGENS = ['F','CL','BR','I'];
 const vdW_RADII = {H:1.2, C:1.7, N:1.55, O:1.52, S:1.8, P:1.8, F:1.47, CL:1.75, BR:1.85, I:1.98, FE:2.0, ZN:1.39, MG:1.73, CA:1.76, NA:2.27, K:2.75};
 
+// 颜色按 t 混入目标色（用于聚焦"褪色"，替代透明度调光，可与半透明表面共存）
+function mixHex(c1,c2,t){const p=h=>{const n=parseInt(String(h).replace('#',''),16);return isNaN(n)?[128,128,128]:[n>>16&255,n>>8&255,n&255]};const a=p(c1),b=p(c2);return 'rgb('+Math.round(a[0]+(b[0]-a[0])*t)+','+Math.round(a[1]+(b[1]-a[1])*t)+','+Math.round(a[2]+(b[2]-a[2])*t)+')'}
+// 半透明表面材质修正：只渲染正面(FrontSide=0)并写深度。
+// 3Dmol 默认双面材质会让背面壳层透过正面壳层二次混合，形成"背面重影/穿模斑块"
+function fixSurfMats(v){Object.values(v.surfaces||{}).forEach(s=>{Object.keys(s).forEach(k=>{const e=s[k];if(e&&e.mat){e.mat.side=0;e.mat.depthWrite=true;e.mat.needsUpdate=true}})})}
+
 // ==================== Shrake-Rupley 溶剂可及表面积（SASA）/ BSA 估算 ====================
 const SASA_PROBE=1.4;
 const SPHERE_PTS=(()=>{const n=96,pts=[],ga=Math.PI*(3-Math.sqrt(5));for(let i=0;i<n;i++){const y=1-2*(i+0.5)/n,r=Math.sqrt(Math.max(0,1-y*y)),th=ga*i;pts.push({x:Math.cos(th)*r,y:y,z:Math.sin(th)*r})}return pts})();
@@ -953,11 +959,15 @@ function renderPPI(){
   if(ck!==ppiCacheKey){computePPI();ppiCacheKey=ck;ppiDrawKey='';}
   // 界面聚焦：非界面残基降透明度，界面残基全彩突出
   const focus=on('focus-ppi'),dimOp=num('focusop-ppi',0.25);
-  // 半透明表面+半透明卡通无深度排序会穿模：表面开启时卡通强制不透明
-  const baseOp=on('surf-ppi')?1:(focus?dimOp:op);
+  const surfOnP=on('surf-ppi');
+  // 半透明表面+半透明卡通无深度排序会穿模：表面开启时卡通强制不透明；
+  // 此时聚焦调光改用"褪色"（颜色混灰）实现，聚焦与表面可共存
+  const baseOp=surfOnP?1:(focus?dimOp:op);
+  const dimCol=c=>mixHex(c,dark?'#39414f':'#dfe3ea',0.78);
+  const baseCol=c=>(surfOnP&&focus)?dimCol(c):c;
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
-  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
-  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
+  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:baseCol(pc),opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
+  ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:baseCol(ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]),opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
   const resStickR=rad*0.7;
   // 界面残基最终覆盖层：cartoon 与 stick 合并在同一次 setStyle（3Dmol setStyle 是整体替换，分开调用会互相清掉）
   const pocket=on('pocket-ppi');
@@ -985,6 +995,7 @@ function renderPPI(){
       ppiChains.forEach((ch,i)=>{
         viewer3d.addSurface('VWS',{opacity:num('sop-ppi',0.72),color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]},{model:ppiModel,chain:ch,hetflag:false});
       });
+      fixSurfMats(viewer3d); // 正面渲染+写深度，消除背面重影
     }
     const lw=num('lw-ppi',3);
     const IXN_HL_CODE={'HB':'HB','SB':'SB','HY':'HY','ππ':'PP','πCat':'PC','SS':'SS','XB':'XB','vdW':'VW'};
@@ -1331,6 +1342,7 @@ function addAlignSurfaces(v,wtModel,mutModel){
   const stype=$('stype-align')?$('stype-align').value:'VWS';const sop=num('sop-align',0.55);
   if(wtModel)v.addSurface(stype,{opacity:sop,color:$('col-wt').value},{model:wtModel,hetflag:false});
   if(mutModel)v.addSurface(stype,{opacity:sop,color:$('col-mut').value},{model:mutModel,hetflag:false});
+  fixSurfMats(v); // 正面渲染+写深度，消除背面重影/穿模斑块
 }
 // ==================== 并排对比（WT | Mut 同步视角） ====================
 let alignSideModelWT=null, alignSideModelMut=null;
