@@ -187,7 +187,10 @@ input[type="text"]{width:100%}
   <div class="panel open">
     <div class="panel-head" onclick="togglePanel(this.parentElement)"><b>互作类型与阈值</b><span class="arrow">▶</span></div>
     <div class="panel-body">
-      <div class="row"><span><span class="tag" style="border-color:#facc15;color:#facc15">氢键</span></span><i id="iHB-ppi" class="toggle on"></i></div>
+      <div class="threshold-row"><span class="tname">界面判定距离 ≤</span><input class="tval" id="if-dist-ppi" type="number" step="0.5" value="5.0"><span class="tunit">Å</span></div>
+      <div class="row" style="margin-top:6px"><span>pLDDT>50 过滤界面（AF3）</span><i id="plddt-ppi" class="toggle on"></i></div>
+      <div class="row"><span>计算 BSA 埋藏面积</span><i id="bsa-ppi" class="toggle on"></i></div>
+      <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#facc15;color:#facc15">氢键</span></span><i id="iHB-ppi" class="toggle on"></i></div>
       <div class="threshold-row"><span class="tname">距离 ≤</span><input class="tval" id="hb-dist-ppi" type="number" step="0.1" value="3.5"><span class="tunit">Å</span></div>
       <div class="threshold-row"><span class="tname">D-H···A ≥</span><input class="tval" id="hb-angle-ppi" type="number" step="5" value="120"><span class="tunit">°</span></div>
       <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#f97316;color:#f97316">盐桥</span></span><i id="iSB-ppi" class="toggle on"></i></div>
@@ -207,7 +210,7 @@ input[type="text"]{width:100%}
       <div class="threshold-row"><span class="tname">C-X···O ≥</span><input class="tval" id="xb-angle-ppi" type="number" step="5" value="140"><span class="tunit">°</span></div>
       <div class="row" style="margin-top:8px"><span><span class="tag" style="border-color:#c084fc;color:#c084fc">vdW</span></span><i id="iVW-ppi" class="toggle on"></i></div>
       <div class="threshold-row"><span class="tname">缓冲 ≤</span><input class="tval" id="vw-buffer-ppi" type="number" step="0.1" value="0.5"><span class="tunit">Å</span></div>
-      <div class="criteria"><b>评判标准参考</b><br>• 氢键：D···A≤3.5Å，角≥120°（无氢结构按 D···A 距离近似）<br>• 盐桥：电荷相反基团≤4.0Å<br>• 疏水：Cβ间距≤5.0Å<br>• π-π：环心距3.3-6.0Å，|cosθ|0.4-0.9<br>• π-Cation：法线方向，≤5.0Å<br>• 二硫键：Sγ~2.0-2.5Å<br>• 卤键：C-X···O≥140°，≤3.5Å<br>• vdW：≤vdW半径和+缓冲</div>
+      <div class="criteria"><b>评判标准参考（统一口径）</b><br>• 界面残基：链间重原子 ≤5.0Å 的残基（残基级），pLDDT>50 过滤（可关），pLDDT>70 为核心残基<br>• 互作计数：按残基对去重（同一残基对多原子接触只计 1 次）<br>• 氢键：D···A≤3.5Å，角≥120°（无氢结构按 D···A 距离近似）<br>• 盐桥：电荷相反基团≤4.0Å<br>• 疏水：Cβ间距≤5.0Å<br>• π-π：环心距3.3-6.0Å，|cosθ|0.4-0.9<br>• π-Cation：法线方向，≤5.0Å<br>• 二硫键：Sγ~2.0-2.5Å<br>• 卤键：C-X···O≥140°，≤3.5Å<br>• vdW：≤vdW半径和+缓冲<br>• BSA 埋藏面积（Shrake-Rupley 估算）：&lt;500 Å² 弱/瞬态，500–1500 中等，&gt;1500 强</div>
     </div>
   </div>
   <div class="panel">
@@ -238,6 +241,9 @@ input[type="text"]{width:100%}
         <div class="stat-card"><div class="num" id="stat-ss-ppi">0</div><div class="label">二硫键</div></div>
         <div class="stat-card"><div class="num" id="stat-xb-ppi">0</div><div class="label">卤键</div></div>
         <div class="stat-card"><div class="num" id="stat-vw-ppi">0</div><div class="label">vdW</div></div>
+        <div class="stat-card"><div class="num" id="stat-ifeff-ppi">0</div><div class="label">有效界面残基</div></div>
+        <div class="stat-card"><div class="num" id="stat-ifcore-ppi">0</div><div class="label">核心界面残基</div></div>
+        <div class="stat-card"><div class="num" id="stat-bsa-ppi">—</div><div class="label">BSA (Å²)</div></div>
       </div>
       <div id="ixnTableWrap-ppi" style="max-height:220px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px"><div class="ixn-empty">暂无互作数据</div></div>
     </div>
@@ -246,7 +252,7 @@ input[type="text"]{width:100%}
     <div class="panel-head" onclick="togglePanel(this.parentElement)"><b>分析结论</b><span class="arrow">▶</span></div>
     <div class="panel-body">
       <div id="conclusion-ppi" style="font-size:11.5px;line-height:1.7;color:#cbd5e1">载入结构并设定互作链后自动生成结论</div>
-      <button class="btn btn-sm btn-secondary" onclick="exportConclusionTxt()" style="margin-top:8px">导出结论 (TXT)</button>
+      <button class="btn btn-sm btn-secondary" onclick="exportConclusionTxt()" style="margin-top:8px">导出分析报告 (TXT，含互作统计详情)</button>
     </div>
   </div>
   <button class="btn" onclick="exportPng()">导出 PNG</button>
@@ -471,6 +477,43 @@ const NEG_RES = ['ASP','GLU'];
 const HYDROPHOBIC = ['ALA','VAL','LEU','ILE','MET','PHE','TRP','PRO','TYR'];
 const HALOGENS = ['F','CL','BR','I'];
 const vdW_RADII = {H:1.2, C:1.7, N:1.55, O:1.52, S:1.8, P:1.8, F:1.47, CL:1.75, BR:1.85, I:1.98, FE:2.0, ZN:1.39, MG:1.73, CA:1.76, NA:2.27, K:2.75};
+
+// ==================== Shrake-Rupley 溶剂可及表面积（SASA）/ BSA 估算 ====================
+const SASA_PROBE=1.4;
+const SPHERE_PTS=(()=>{const n=96,pts=[],ga=Math.PI*(3-Math.sqrt(5));for(let i=0;i<n;i++){const y=1-2*(i+0.5)/n,r=Math.sqrt(Math.max(0,1-y*y)),th=ga*i;pts.push({x:Math.cos(th)*r,y:y,z:Math.sin(th)*r})}return pts})();
+function calcSASA(atoms){
+  const R=atoms.map(a=>(vdW_RADII[(a.elem||'C').toUpperCase()]||1.7)+SASA_PROBE);
+  const cell=5.4,grid=new Map();
+  atoms.forEach((a,i)=>{const k=Math.floor(a.x/cell)+','+Math.floor(a.y/cell)+','+Math.floor(a.z/cell);let arr=grid.get(k);if(!arr){arr=[];grid.set(k,arr)}arr.push(i)});
+  // 每原子的潜在遮蔽邻居（只算一次，之后逐球面点只查邻居）
+  const neigh=atoms.map((a,i)=>{
+    const out=[],cx=Math.floor(a.x/cell),cy=Math.floor(a.y/cell),cz=Math.floor(a.z/cell),ri=R[i];
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(let dz=-1;dz<=1;dz++){
+      const arr=grid.get((cx+dx)+','+(cy+dy)+','+(cz+dz));if(!arr)continue;
+      for(const j of arr){if(j===i)continue;const b=atoms[j],dd=(a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z),rr=ri+R[j];if(dd<rr*rr)out.push(j)}
+    }
+    return out;
+  });
+  let area=0;const NP=SPHERE_PTS.length;
+  atoms.forEach((a,i)=>{
+    const ri=R[i];let exposed=0;
+    for(const p of SPHERE_PTS){
+      const px=a.x+ri*p.x,py=a.y+ri*p.y,pz=a.z+ri*p.z;let buried=false;
+      for(const j of neigh[i]){const b=atoms[j],dx=px-b.x,dy=py-b.y,dz=pz-b.z,rj=R[j];if(dx*dx+dy*dy+dz*dz<rj*rj){buried=true;break}}
+      if(!buried)exposed++;
+    }
+    area+=4*Math.PI*ri*ri*exposed/NP;
+  });
+  return area;
+}
+// BSA = (SASA(受体) + SASA(配体) - SASA(复合物)) / 2；原子过多时返回 undefined 跳过
+function calcBSA(recAtoms,ligAtoms){
+  const rec=recAtoms.filter(isHeavy),lig=ligAtoms.filter(isHeavy);
+  if(!rec.length||!lig.length)return null;
+  if(rec.length+lig.length>15000)return undefined;
+  const aR=calcSASA(rec),aL=calcSASA(lig),aC=calcSASA(rec.concat(lig));
+  return Math.max(0,(aR+aL-aC)/2);
+}
 const AROM = { PHE:[['CG','CD1','CD2','CE1','CE2','CZ']], TYR:[['CG','CD1','CD2','CE1','CE2','CZ']], HIS:[['CG','ND1','CD2','CE1','NE2']], HID:[['CG','ND1','CD2','CE1','NE2']], HIE:[['CG','ND1','CD2','CE1','NE2']], HIP:[['CG','ND1','CD2','CE1','NE2']], TRP:[['CG','CD1','NE1','CE2','CD2'],['CD2','CE2','CE3','CZ2','CZ3','CH2']] };
 
 // Kabsch
@@ -599,15 +642,27 @@ function detectPPI(model, proteinChains, partnerChains) {
   const ixns = [];
   if(!model || !proteinChains.length || !partnerChains.length) return ixns;
   const all = model.selectedAtoms({}).filter(a=>!a.hetflag);
-  const protA = all.filter(a=>proteinChains.includes(a.chain||'_'));
-  const partA = all.filter(a=>partnerChains.includes(a.chain||'_'));
+  let protA = all.filter(a=>proteinChains.includes(a.chain||'_'));
+  let partA = all.filter(a=>partnerChains.includes(a.chain||'_'));
+  // pLDDT 过滤（AF3）：b 缺失视为通过；仅当 b 因子确为 pLDDT 风格时才生效
+  if(on('plddt-ppi')){
+    const casB=all.filter(a=>(a.atom||'').trim()==='CA'&&typeof a.b==='number').map(a=>a.b);
+    const looks=casB.length>10&&!casB.some(b=>b>100)&&casB.filter(b=>b>70).length/casB.length>0.15;
+    if(looks){const ok=a=>typeof a.b!=='number'||a.b>50;protA=protA.filter(ok);partA=partA.filter(ok)}
+  }
   const nativeH = model.selectedAtoms({}).filter(isHydrogen);
   const heavy = all.filter(isHeavy);
   const polarHSet = new Set();
   nativeH.forEach(h=>{ const p=nearestHeavy(h,heavy); if(p && ['N','O','S'].includes((p.elem||'').toUpperCase())) polarHSet.add(h.index ?? h.serial ?? h); });
   const showThisH = (h,hmode) => hmode==='all'?true : hmode==='none'?false : polarHSet.has(h.index ?? h.serial ?? h);
 
+  // 统一口径：HB/HY/vdW 按残基对去重
+  const seenRP=new Set();
   const addIxn=(type, color, a1, a2, detail, score)=>{
+    if(type==='HB'||type==='HY'||type==='vdW'){
+      const k=type+'|'+(a1.chain||'_')+'|'+(a1.resi??'')+'|'+(a2.chain||'_')+'|'+(a2.resi??'');
+      if(seenRP.has(k))return;seenRP.add(k);
+    }
     ixns.push({type, color, a1, a2, detail, score, key: type+'_'+(a1.chain||'_')+'_'+a1.resi+'_'+(a2.chain||'_')+'_'+a2.resi});
   };
 
@@ -702,9 +757,9 @@ $('drop-ppi').onclick=()=>$('file-ppi').click();
 $('file-ppi').onchange=e=>ppiLoad(e.target.files[0]);
 $('drop-ppi').ondragover=e=>e.preventDefault();
 $('drop-ppi').ondrop=e=>{e.preventDefault();ppiLoad(e.dataTransfer.files[0])};
-['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi','focus-ppi','surf-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
+['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi','focus-ppi','surf-ppi','plddt-ppi','bsa-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
 const ppiDebounced = debounce(()=>{ if(currentTab==='ppi') renderPPI(); }, 150);
-['bg-ppi','pc-ppi','op-ppi','rad-ppi','lw-ppi','sop-ppi','hmode-ppi','lsize-ppi','focusop-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
+['bg-ppi','pc-ppi','op-ppi','rad-ppi','lw-ppi','sop-ppi','hmode-ppi','lsize-ppi','focusop-ppi','if-dist-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
 
 function ppiLoad(f){
   const r=new FileReader();
@@ -747,7 +802,8 @@ function ppiUpdateStats(){$('nRec-ppi').textContent=ppiChains.filter(c=>ppiChain
 
 // —— PPI 计算与绘制分离：结构/角色/阈值/开关变化才重算互作；颜色/透明度等仅刷新样式 ——
 let ppiIfaceArr = [], ppiResMap = {}, ppiCacheKey = '', ppiDrawKey = '';
-const PPI_PARAM_IDS = ['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','hmode-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'];
+let ppiIfaceStats = {raw:0,eff:0,core:0}, ppiBsa = null, ppiBsaKey = '', ppiLooksPlddt = false, ppiPlddtApplied = false;
+const PPI_PARAM_IDS = ['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','hmode-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi','if-dist-ppi','plddt-ppi','bsa-ppi'];
 function ppiComputeKey(){
   return ppiChains.map(c=>c+':'+(ppiChainRoles[c]||'')).join(',')+'|'+PPI_PARAM_IDS.map(id=>{const e=$(id);return e?(e.classList.contains('on')?1:0)+':'+(e.value||''):''}).join(',');
 }
@@ -759,19 +815,46 @@ function computePPI(){
   ppiIxnData=[];ppiIfaceArr=[];ppiResMap={};
   prot.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi+'|'+a.resn;(ppiResMap[k]=ppiResMap[k]||[]).push(a)});
   if(!recChains.length||!ligChains.length)return;
-  const recA=prot.filter(a=>isRec(a));const ligA=prot.filter(a=>isLig(a));
-  // 界面残基（网格邻近搜索）
+  const recA0=prot.filter(a=>isRec(a));const ligA0=prot.filter(a=>isLig(a));
+  // 界面残基（网格邻近搜索，残基级，阈值可调，默认 5.0Å）
+  const ifCut=num('if-dist-ppi',5.0);
   const ifaceRes=new Set();
-  neighborPairs(recA,ligA,6.0).forEach(([a,b])=>{ifaceRes.add((a.chain||'_')+'|'+a.resi+'|'+a.resn);ifaceRes.add((b.chain||'_')+'|'+b.resi+'|'+b.resn)});
+  neighborPairs(recA0,ligA0,ifCut).forEach(([a,b])=>{ifaceRes.add((a.chain||'_')+'|'+a.resi+'|'+a.resn);ifaceRes.add((b.chain||'_')+'|'+b.resi+'|'+b.resn)});
   ppiIfaceArr=[...ifaceRes];
+  // 残基 pLDDT（取 CA 的 b 值，无 CA 取首个原子；b 缺失视为通过过滤）
+  const resB={};
+  prot.forEach(a=>{if(typeof a.b!=='number')return;const k=(a.chain||'_')+'|'+a.resi+'|'+a.resn;const isCA=(a.atom||'').trim()==='CA';if(!(k in resB)||isCA)resB[k]=a.b});
+  const bEff=k=>typeof resB[k]!=='number'||resB[k]>50;
+  ppiIfaceStats={raw:ppiIfaceArr.length,eff:ppiIfaceArr.filter(bEff).length,core:ppiIfaceArr.filter(k=>typeof resB[k]==='number'&&resB[k]>70).length};
+  // pLDDT 过滤：仅当 b 因子确为 pLDDT 风格（AF3：全部≤100 且有相当比例>70）才生效；
+  // 实验结构的 B 因子非置信度，自动跳过过滤，避免把界面误清零
+  const casB=prot.filter(a=>(a.atom||'').trim()==='CA'&&typeof a.b==='number').map(a=>a.b);
+  ppiLooksPlddt=casB.length>10&&!casB.some(b=>b>100)&&casB.filter(b=>b>70).length/casB.length>0.15;
+  const usePLDDT=on('plddt-ppi')&&ppiLooksPlddt;
+  let recA=recA0,ligA=ligA0;
+  if(usePLDDT){const effSet=new Set(ppiIfaceArr.filter(bEff));const inEff=a=>effSet.has((a.chain||'_')+'|'+a.resi+'|'+a.resn);recA=recA0.filter(inEff);ligA=ligA0.filter(inEff)}
+  ppiPlddtApplied=usePLDDT;
+  if(!usePLDDT)ppiIfaceStats.eff=ppiIfaceStats.raw;
+  // BSA 埋藏面积（基于未过滤的完整链，Shrake-Rupley；只随链角色/开关变化重算，阈值调节不触发）
+  const bkey=recChains.join(',')+'|'+ligChains.join(',')+'|'+(on('bsa-ppi')?1:0);
+  if(bkey!==ppiBsaKey){ppiBsaKey=bkey;ppiBsa=on('bsa-ppi')?calcBSA(recA0,ligA0):null}
   const nativeH=all.filter(isHydrogen);const heavy=all.filter(isHeavy);
   const hmode=$('hmode-ppi')?$('hmode-ppi').value:'polar';
   const polarHSet=new Set();
   nativeH.forEach(h=>{const p=nearestHeavy(h,heavy);if(p&&['N','O','S'].includes((p.elem||'').toUpperCase()))polarHSet.add(h.index??h.serial??h)});
   const showThisH=h=>hmode==='all'?true:hmode==='none'?false:polarHSet.has(h.index??h.serial??h);
   // p1/p2 = 绘制端点；sph = 需要画球的中心点（π 环心/阳离子）
-  const addIxn=(type,color,a1,a2,detail,score,p1,p2,sph)=>ppiIxnData.push({type,color,a1,a2,detail,score,p1:p1||pos(a1),p2:p2||pos(a2),sph});
-  const recH=nativeH.filter(h=>isRec(h));const ligH=nativeH.filter(h=>isLig(h));
+  // 统一口径：HB/HY/vdW 按残基对去重（同一残基对的多原子接触只计 1 次）
+  const seenRP=new Set();
+  const addIxn=(type,color,a1,a2,detail,score,p1,p2,sph)=>{
+    if(type==='HB'||type==='HY'||type==='vdW'){
+      const k=type+'|'+(a1.chain||'_')+'|'+(a1.resi??'')+'|'+(a2.chain||'_')+'|'+(a2.resi??'');
+      if(seenRP.has(k))return;seenRP.add(k);
+    }
+    ppiIxnData.push({type,color,a1,a2,detail,score,p1:p1||pos(a1),p2:p2||pos(a2),sph});
+  };
+  let recH=nativeH.filter(h=>isRec(h)),ligH=nativeH.filter(h=>isLig(h));
+  if(usePLDDT){const effSet2=new Set(ppiIfaceArr.filter(bEff));const inEff2=a=>effSet2.has((a.chain||'_')+'|'+a.resi+'|'+a.resn);recH=recH.filter(inEff2);ligH=ligH.filter(inEff2)}
   if(on('iHB-ppi')){
     const dmax=num('hb-dist-ppi',3.5),amin=num('hb-angle-ppi',120);
     if(!nativeH.length){
@@ -893,13 +976,16 @@ function renderPPI(){
   ppiUpdateConclusion();
   $('infoTitle').textContent='结构信息';
   $('infoLine1').innerHTML=ppiChains.map(c=>'<b>Chain '+c+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':(ppiChainRoles[c]==='ligand'?'配体':'未选'))+')').join(' · ');
-  $('infoLine2').textContent='界面残基: '+ppiIfaceArr.length+' 个 | 接触对: '+ppiIxnData.length+' 对';
+  $('infoLine2').textContent='界面残基: '+ppiIfaceStats.eff+' 个(原始'+ppiIfaceStats.raw+'，核心'+ppiIfaceStats.core+') | 接触对: '+ppiIxnData.length+' 对 | BSA: '+(typeof ppiBsa==='number'?Math.round(ppiBsa)+' Å²':'—');
   $('infoDetail').textContent='氢键 '+ppiIxnData.filter(x=>x.type==='HB').length+' | 盐桥 '+ppiIxnData.filter(x=>x.type==='SB').length+' | 疏水 '+ppiIxnData.filter(x=>x.type==='HY').length;
   viewer3d.render();
 }
 function ppiUpdateStatsTable(){
   const count=t=>ppiIxnData.filter(x=>x.type===t).length;
   $('stat-hb-ppi').textContent=count('HB');$('stat-sb-ppi').textContent=count('SB');$('stat-hy-ppi').textContent=count('HY');$('stat-pp-ppi').textContent=count('ππ');$('stat-pc-ppi').textContent=count('πCat');$('stat-ss-ppi').textContent=count('SS');$('stat-xb-ppi').textContent=count('XB');$('stat-vw-ppi').textContent=count('vdW');
+  if($('stat-ifeff-ppi'))$('stat-ifeff-ppi').textContent=ppiIfaceStats.eff;
+  if($('stat-ifcore-ppi'))$('stat-ifcore-ppi').textContent=ppiIfaceStats.core;
+  if($('stat-bsa-ppi'))$('stat-bsa-ppi').textContent=typeof ppiBsa==='number'?Math.round(ppiBsa):'—';
   const wrap=$('ixnTableWrap-ppi');if(!ppiIxnData.length){wrap.innerHTML='<div class="ixn-empty">暂无互作数据</div>';return}
   const typeMap={'HB':'氢键','SB':'盐桥','HY':'疏水','ππ':'π-π','πCat':'π-Cat','SS':'二硫','XB':'卤键','vdW':'vdW'};
   const colorMap={'HB':'#facc15','SB':'#f97316','HY':'#a3a3a3','ππ':'#22c55e','πCat':'#38bdf8','SS':'#ef4444','XB':'#06b6d4','vdW':'#c084fc'};
@@ -922,26 +1008,75 @@ function ppiUpdateConclusion(){
   const cnt={};
   ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=resLabel(a);cnt[k]=(cnt[k]||0)+1}})});
   const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>k+'('+v+')');
-  // 特异性互作（非 vdW）明细
+  // 特异性互作（非 vdW，已按残基对去重）
   const spec=ppiIxnData.filter(x=>x.type!=='vdW').slice(0,8).map(x=>IXN_TYPE_CN[x.type]+' '+resLabel(x.a1)+' ↔ '+resLabel(x.a2));
   const specN=ppiIxnData.filter(x=>x.type!=='vdW').length;
-  // 经验性强度评估（以氢键+盐桥+π 作用等特异性互作数量计）
   const strong=c('HB')+c('SB')+c('ππ')+c('πCat')+c('SS')+c('XB');
-  const level=strong>=10?'较强（特异性互作丰富）':strong>=4?'中等':strong>=1?'较弱（以 vdW/疏水为主）':'未检测到明显相互作用';
+  const bsaNum=(typeof ppiBsa==='number')?ppiBsa:null;
+  const usePLDDT=on('plddt-ppi');
+  const eff=ppiIfaceStats.eff;
+  // 多指标综合判定：有效界面残基 + 特异性互作对数 + BSA（参考：≥12 残基 / ≥2 对 / ≥500 Å²）
+  let verdict;
+  if(eff>=12&&strong>=2&&(bsaNum===null||bsaNum>=500))
+    verdict='界面规模充足（有效界面 '+eff+' 残基'+(bsaNum!==null?'，BSA '+Math.round(bsaNum)+' Å²':'')+'），特异性互作 '+strong+' 对，判定为<b>高可信度互作</b>。';
+  else if(strong>=1&&(eff>=4||(bsaNum!==null&&bsaNum>=200)))
+    verdict='存在 '+strong+' 对特异性互作，但界面规模有限（有效界面 '+eff+' 残基'+(bsaNum!==null?'，BSA '+Math.round(bsaNum)+' Å²':'')+'），互作证据<b>中等偏弱</b>，建议重点核查特异性位点并结合实验验证。';
+  else
+    verdict='未检出足够的特异性互作与界面规模（有效界面 '+eff+' 残基，特异性互作 '+strong+' 对'+(bsaNum!==null?'，BSA '+Math.round(bsaNum)+' Å²':'')+'），互作证据<b>不足</b>。';
+  const bsaLine=bsaNum!==null?'<b style="color:#22d3ee">BSA 埋藏面积</b>：'+Math.round(bsaNum)+' Å²（参考：&lt;500 弱/瞬态，500–1500 中等，&gt;1500 强）。<br>':'';
   const noH=!ppiModel.selectedAtoms({}).some(isHydrogen);
   el.innerHTML=
-    '<b style="color:#22d3ee">界面概况</b>：受体链 '+recChains.join(',')+' ↔ 配体链 '+ligChains.join(',')+'；界面残基 '+ppiIfaceArr.length+' 个，接触对 '+ppiIxnData.length+' 对。<br>'+
+    '<b style="color:#22d3ee">界面概况</b>：受体链 '+recChains.join(',')+' ↔ 配体链 '+ligChains.join(',')+'；有效界面残基 '+eff+' 个（原始 '+ppiIfaceStats.raw+'，核心 pLDDT>70 共 '+ppiIfaceStats.core+'），接触对 '+ppiIxnData.length+' 对（按残基对去重）。<br>'+
+    bsaLine+
     '<b style="color:#22d3ee">作用力构成</b>：'+(parts.length?parts.join('，'):'无')+'。<br>'+
     '<b style="color:#22d3ee">关键残基</b>（接触频次 Top5）：'+(top.length?top.join('，'):'无')+'。<br>'+
     (spec.length?'<b style="color:#22d3ee">特异性互作</b>（前 '+Math.min(8,specN)+' 项）：'+spec.join('；')+'<br>':'')+
-    '<b style="color:#f59e0b">综合评估</b>：界面结合强度<b>'+level+'</b>（经验性参考：氢键+盐桥+π 类等特异性互作共 '+strong+' 对）。'+
+    '<b style="color:#f59e0b">综合评估</b>：'+verdict+
+    '<br><span style="color:#64748b">统一口径：界面=链间重原子≤'+num('if-dist-ppi',5.0)+'Å 残基级；'+(ppiPlddtApplied?'pLDDT>50 过滤已生效（低置信区不计入）；':(on('plddt-ppi')?'b 因子非 pLDDT（实验结构），过滤自动跳过；':'pLDDT 过滤关闭；'))+'互作按残基对去重计数。</span>'+
     (noH?'<br><span style="color:#64748b">注：结构无氢原子，氢键按 D···A 距离近似判定，建议结合实验数据验证。</span>':'');
 }
 function exportConclusionTxt(){
   const el=$('conclusion-ppi');
-  if(!el||!el.textContent.trim()){alert('暂无结论可导出');return}
-  const blob=new Blob([el.textContent],{type:'text/plain;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_分析结论.txt';a.click();URL.revokeObjectURL(url);
+  if(!ppiModel||!el||!el.textContent.trim()){alert('暂无结论可导出');return}
+  const recChains=ppiChains.filter(c=>ppiChainRoles[c]==='receptor');
+  const ligChains=ppiChains.filter(c=>ppiChainRoles[c]==='ligand');
+  const c=t=>ppiIxnData.filter(x=>x.type===t).length;
+  const order=['HB','SB','HY','ππ','πCat','SS','XB','vdW'];
+  const bsaNum=(typeof ppiBsa==='number')?ppiBsa:null;
+  const cnt={};
+  ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=resLabel(a);cnt[k]=(cnt[k]||0)+1}})});
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const L=[];
+  L.push('========== ProLigView PPI 分析报告 ==========');
+  L.push('生成时间: '+new Date().toLocaleString());
+  L.push('受体链: '+(recChains.join(',')||'-')+'  |  配体链: '+(ligChains.join(',')||'-'));
+  L.push('统一口径: 界面=链间重原子 ≤'+num('if-dist-ppi',5.0)+'Å（残基级）；pLDDT>50 过滤'+(on('plddt-ppi')?'开启':'关闭')+'；互作按残基对去重计数');
+  L.push('');
+  L.push('[界面与置信度]');
+  L.push('原始界面残基: '+ppiIfaceStats.raw);
+  L.push('有效界面残基(pLDDT>50): '+ppiIfaceStats.eff);
+  L.push('核心界面残基(pLDDT>70): '+ppiIfaceStats.core);
+  L.push('BSA 埋藏面积: '+(bsaNum!==null?Math.round(bsaNum)+' Å²':'未计算')+'  (参考: <500 弱/瞬态, 500-1500 中等, >1500 强)');
+  L.push('');
+  L.push('[互作统计]（残基对）');
+  order.forEach(t=>L.push(IXN_TYPE_CN[t]+': '+c(t)+' 对'));
+  L.push('接触对合计: '+ppiIxnData.length);
+  L.push('');
+  L.push('[关键残基 Top5]（按接触频次）');
+  top.forEach(([k,v])=>L.push(k+' — '+v+' 次接触'));
+  L.push('');
+  L.push('[互作统计详情]（全部接触对）');
+  L.push('类型\t链A:残基A\t链B:残基B\t详情\t距离(Å)');
+  ppiIxnData.forEach(ix=>{
+    L.push(IXN_TYPE_CN[ix.type]+'\t'+resLabel(ix.a1)+'\t'+resLabel(ix.a2)+'\t'+ix.detail+'\t'+(typeof ix.score==='number'?ix.score.toFixed(2):''));
+  });
+  L.push('');
+  L.push('[综合评估]');
+  L.push(el.textContent.trim());
+  L.push('');
+  L.push('注: 本报告为基于几何规则的自动化评估，仅供参考，需结合实验数据验证。');
+  const blob=new Blob([L.join('\n')],{type:'text/plain;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_分析报告.txt';a.click();URL.revokeObjectURL(url);
 }
 // 精确聚焦工具：3Dmol 的 zoomTo 第一个参数是原子选择器（不是坐标），
 // 这里按目标残基的全部原子计算包围盒并动画居中
