@@ -85,6 +85,12 @@ input[type="text"]{width:100%}
 .ixn-table tr:hover td{background:#1e293b}
 .ixn-table .badge{display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700}
 .ixn-empty{text-align:center;color:#475569;padding:16px;font-size:12px}
+.hlchip{font-size:10px;padding:2px 7px;border-radius:10px;border:1px solid;cursor:pointer;opacity:.3;user-select:none;background:transparent}
+.hlchip.on{opacity:1}
+.ifacechip{font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid #475569;cursor:pointer;color:#cbd5e1;user-select:none;background:transparent}
+.ifacechip:hover{background:#1e293b}
+.ifacechip.dim{opacity:.32}
+.ifacechip.core{font-weight:700;border-width:2px}
 
 .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:8px 0}
 .stat-card{background:#111827;border:1px solid #1e293b;border-radius:8px;padding:8px;text-align:center}
@@ -219,6 +225,17 @@ input[type="text"]{width:100%}
       <div class="row"><span>Cartoon 透明度</span><input id="op-ppi" type="range" min="0.1" max="1" step="0.05" value="0.8"></div>
       <div class="row"><span>棒粗细</span><input id="rad-ppi" type="range" min="0.08" max="0.35" step="0.01" value="0.16"></div>
       <div class="row"><span>互作虚线宽度</span><input id="lw-ppi" type="range" min="1" max="6" step="0.5" value="3"></div>
+      <div class="row"><span>互作虚线显示（按类型）</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px">
+        <span class="hlchip on" id="hl-HB-ppi" style="border-color:#facc15;color:#facc15">氢键</span>
+        <span class="hlchip on" id="hl-SB-ppi" style="border-color:#f97316;color:#f97316">盐桥</span>
+        <span class="hlchip on" id="hl-HY-ppi" style="border-color:#a3a3a3;color:#a3a3a3">疏水</span>
+        <span class="hlchip on" id="hl-PP-ppi" style="border-color:#22c55e;color:#22c55e">π-π</span>
+        <span class="hlchip on" id="hl-PC-ppi" style="border-color:#38bdf8;color:#38bdf8">π-Cat</span>
+        <span class="hlchip on" id="hl-SS-ppi" style="border-color:#ef4444;color:#ef4444">二硫</span>
+        <span class="hlchip on" id="hl-XB-ppi" style="border-color:#06b6d4;color:#06b6d4">卤键</span>
+        <span class="hlchip on" id="hl-VW-ppi" style="border-color:#c084fc;color:#c084fc">vdW</span>
+      </div>
       <div class="row"><span>显示界面残基侧链</span><i id="pocket-ppi" class="toggle on"></i></div>
       <div class="row"><span>界面聚焦（淡化非界面）</span><i id="focus-ppi" class="toggle on"></i></div>
       <div class="row"><span>非界面透明度</span><input id="focusop-ppi" type="range" min="0.02" max="0.6" step="0.02" value="0.25"></div>
@@ -246,6 +263,8 @@ input[type="text"]{width:100%}
         <div class="stat-card"><div class="num" id="stat-bsa-ppi">—</div><div class="label">BSA (Å²)</div></div>
       </div>
       <div id="ixnTableWrap-ppi" style="max-height:220px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px"><div class="ixn-empty">暂无互作数据</div></div>
+      <div style="margin-top:8px;font-size:11px;color:#94a3b8"><b>界面残基</b> <span id="ifaceCount-ppi"></span>（点击定位；粗框=核心 pLDDT&gt;70；暗淡=被 pLDDT 过滤）</div>
+      <div id="ifaceWrap-ppi" style="max-height:130px;overflow-y:auto;margin-top:4px;display:flex;flex-wrap:wrap;gap:3px;align-content:flex-start"></div>
     </div>
   </div>
   <div class="panel open">
@@ -758,6 +777,8 @@ $('file-ppi').onchange=e=>ppiLoad(e.target.files[0]);
 $('drop-ppi').ondragover=e=>e.preventDefault();
 $('drop-ppi').ondrop=e=>{e.preventDefault();ppiLoad(e.dataTransfer.files[0])};
 ['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi','focus-ppi','surf-ppi','plddt-ppi','bsa-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
+// 互作虚线按类型突出显示开关（仅影响绘制，不影响检测与统计）
+document.querySelectorAll('.hlchip').forEach(el=>{el.onclick=()=>{el.classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
 const ppiDebounced = debounce(()=>{ if(currentTab==='ppi') renderPPI(); }, 150);
 ['bg-ppi','pc-ppi','op-ppi','rad-ppi','lw-ppi','sop-ppi','hmode-ppi','lsize-ppi','focusop-ppi','if-dist-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
 
@@ -802,6 +823,7 @@ function ppiUpdateStats(){$('nRec-ppi').textContent=ppiChains.filter(c=>ppiChain
 
 // —— PPI 计算与绘制分离：结构/角色/阈值/开关变化才重算互作；颜色/透明度等仅刷新样式 ——
 let ppiIfaceArr = [], ppiResMap = {}, ppiCacheKey = '', ppiDrawKey = '';
+let ppiIfaceList = [], ppiIfaceDisp = [];
 let ppiIfaceStats = {raw:0,eff:0,core:0}, ppiBsa = null, ppiBsaKey = '', ppiLooksPlddt = false, ppiPlddtApplied = false;
 const PPI_PARAM_IDS = ['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','hmode-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi','if-dist-ppi','plddt-ppi','bsa-ppi'];
 function ppiComputeKey(){
@@ -812,7 +834,7 @@ function computePPI(){
   const recChains=ppiChains.filter(c=>ppiChainRoles[c]==='receptor');
   const ligChains=ppiChains.filter(c=>ppiChainRoles[c]==='ligand');
   const isRec=a=>recChains.includes(a.chain||'_');const isLig=a=>ligChains.includes(a.chain||'_');
-  ppiIxnData=[];ppiIfaceArr=[];ppiResMap={};
+  ppiIxnData=[];ppiIfaceArr=[];ppiResMap={};ppiIfaceList=[];ppiIfaceDisp=[];
   prot.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi+'|'+a.resn;(ppiResMap[k]=ppiResMap[k]||[]).push(a)});
   if(!recChains.length||!ligChains.length)return;
   const recA0=prot.filter(a=>isRec(a));const ligA0=prot.filter(a=>isLig(a));
@@ -835,6 +857,9 @@ function computePPI(){
   if(usePLDDT){const effSet=new Set(ppiIfaceArr.filter(bEff));const inEff=a=>effSet.has((a.chain||'_')+'|'+a.resi+'|'+a.resn);recA=recA0.filter(inEff);ligA=ligA0.filter(inEff)}
   ppiPlddtApplied=usePLDDT;
   if(!usePLDDT)ppiIfaceStats.eff=ppiIfaceStats.raw;
+  // 界面残基清单（供左侧面板展示与点击定位）；展示/高亮集 = 过滤生效时的有效残基，否则全部
+  ppiIfaceDisp=usePLDDT?ppiIfaceArr.filter(bEff):ppiIfaceArr.slice();
+  ppiIfaceList=ppiIfaceArr.map(k=>{const p=k.split('|');const b=resB[k];return{chain:p[0],resi:+p[1],resn:p[2],b:typeof b==='number'?b:null,eff:bEff(k),core:typeof b==='number'&&b>70}}).sort((x,y)=>x.chain<y.chain?-1:x.chain>y.chain?1:x.resi-y.resi);
   // BSA 埋藏面积（基于未过滤的完整链，Shrake-Rupley；只随链角色/开关变化重算，阈值调节不触发）
   const bkey=recChains.join(',')+'|'+ligChains.join(',')+'|'+(on('bsa-ppi')?1:0);
   if(bkey!==ppiBsaKey){ppiBsaKey=bkey;ppiBsa=on('bsa-ppi')?calcBSA(recA0,ligA0):null}
@@ -928,7 +953,8 @@ function renderPPI(){
   if(ck!==ppiCacheKey){computePPI();ppiCacheKey=ck;ppiDrawKey='';}
   // 界面聚焦：非界面残基降透明度，界面残基全彩突出
   const focus=on('focus-ppi'),dimOp=num('focusop-ppi',0.25);
-  const baseOp=focus?dimOp:op;
+  // 半透明表面+半透明卡通无深度排序会穿模：表面开启时卡通强制不透明
+  const baseOp=on('surf-ppi')?1:(focus?dimOp:op);
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
   viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
   ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
@@ -937,10 +963,10 @@ function renderPPI(){
   const pocket=on('pocket-ppi');
   if(focus||pocket){
     const byChain={};
-    ppiIfaceArr.forEach(k=>{const[c,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
+    ppiIfaceDisp.forEach(k=>{const[c,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
     Object.entries(byChain).forEach(([c,resis])=>{
       const col=ppiChainColors[c]||PPI_CHAIN_PALETTE[ppiChains.indexOf(c)%PPI_CHAIN_PALETTE.length];
-      const cart={color:col,opacity:(focus?1.0:op),arrows:true,style:'rectangle',thickness:0.4};
+      const cart={color:col,opacity:(focus||on('surf-ppi')?1.0:op),arrows:true,style:'rectangle',thickness:0.4};
       const sel={model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false};
       if(pocket){
         viewer3d.setStyle({model:sel.model,chain:sel.chain,resi:sel.resi,hetflag:false,elem:['N','O','S']},{cartoon:cart,stick:{radius:resStickR,colorscheme:'Jmol'}});
@@ -951,7 +977,7 @@ function renderPPI(){
     });
   }
   // 形状与标签只在计算结果或标签参数变化时重建（虚线/标签创建是最大开销）
-  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0)+'|'+num('lw-ppi',3)+'|'+num('sop-ppi',0.72);
+  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0)+'|'+num('lw-ppi',3)+'|'+num('sop-ppi',0.72)+'|'+['HB','SB','HY','PP','PC','SS','XB','VW'].map(c=>on('hl-'+c+'-ppi')?1:0).join('');
   if(dk!==ppiDrawKey){
     ppiDrawKey=dk;
     viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
@@ -961,7 +987,9 @@ function renderPPI(){
       });
     }
     const lw=num('lw-ppi',3);
+    const IXN_HL_CODE={'HB':'HB','SB':'SB','HY':'HY','ππ':'PP','πCat':'PC','SS':'SS','XB':'XB','vdW':'VW'};
     ppiIxnData.forEach(ix=>{
+      if(!on('hl-'+IXN_HL_CODE[ix.type]+'-ppi'))return; // 该类型的突出显示被用户关闭
       // WebGL 线宽在多数浏览器恒为 1px，虚线统一用 dashed 圆柱渲染才能真正加粗
       if(ix.type==='SS')viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:lw*0.04,color:ix.color,fromCap:1,toCap:1});
       else viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:lw*0.032,dashed:true,color:ix.color,fromCap:1,toCap:1});
@@ -969,7 +997,7 @@ function renderPPI(){
     });
     if(on('label-ppi')){
       const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=num('lsize-ppi',11);
-      ppiIfaceArr.forEach(k=>{const atoms=ppiResMap[k]||[];const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];if(ca)viewer3d.addLabel(k.split('|')[1]+k.split('|')[2],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})});
+      ppiIfaceDisp.forEach(k=>{const atoms=ppiResMap[k]||[];const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];if(ca)viewer3d.addLabel(k.split('|')[1]+k.split('|')[2],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})});
     }
   }
   ppiUpdateStatsTable();
@@ -986,6 +1014,18 @@ function ppiUpdateStatsTable(){
   if($('stat-ifeff-ppi'))$('stat-ifeff-ppi').textContent=ppiIfaceStats.eff;
   if($('stat-ifcore-ppi'))$('stat-ifcore-ppi').textContent=ppiIfaceStats.core;
   if($('stat-bsa-ppi'))$('stat-bsa-ppi').textContent=typeof ppiBsa==='number'?Math.round(ppiBsa):'—';
+  // 界面残基清单：与 3D 高亮/标签同源（高亮=有效集），可按类型开关的虚线互不影响
+  const iw=$('ifaceWrap-ppi');
+  if(iw){
+    if(!ppiIfaceList.length){iw.innerHTML='';if($('ifaceCount-ppi'))$('ifaceCount-ppi').textContent=''}
+    else{
+      if($('ifaceCount-ppi'))$('ifaceCount-ppi').textContent='（有效 '+ppiIfaceStats.eff+' / 原始 '+ppiIfaceStats.raw+' / 核心 '+ppiIfaceStats.core+'）';
+      iw.innerHTML=ppiIfaceList.map((r,i)=>{
+        const col=ppiChainColors[r.chain]||PPI_CHAIN_PALETTE[Math.max(0,ppiChains.indexOf(r.chain))%PPI_CHAIN_PALETTE.length];
+        return '<span class="ifacechip'+(r.eff?'':' dim')+(r.core?' core':'')+'" style="border-color:'+col+'" onclick="ppiFocusIface('+i+')" title="Chain '+r.chain+' · '+(r.b!==null?'pLDDT '+r.b.toFixed(0):'无 pLDDT')+'">'+r.chain+':'+r.resn+r.resi+'</span>';
+      }).join('');
+    }
+  }
   const wrap=$('ixnTableWrap-ppi');if(!ppiIxnData.length){wrap.innerHTML='<div class="ixn-empty">暂无互作数据</div>';return}
   const typeMap={'HB':'氢键','SB':'盐桥','HY':'疏水','ππ':'π-π','πCat':'π-Cat','SS':'二硫','XB':'卤键','vdW':'vdW'};
   const colorMap={'HB':'#facc15','SB':'#f97316','HY':'#a3a3a3','ππ':'#22c55e','πCat':'#38bdf8','SS':'#ef4444','XB':'#06b6d4','vdW':'#c084fc'};
@@ -1090,6 +1130,7 @@ function zoomToAtoms(atoms){
   if(currentTab==='align'&&on('sideBySide')&&alignViewerWT&&alignViewerMut){alignViewerWT.zoomTo(sel);alignViewerMut.zoomTo(sel);alignViewerWT.render();alignViewerMut.render()}
 }
 function ppiFocusIxn(idx){const ix=ppiIxnData[idx];if(!ix)return;const atoms=atomsOfResidue(ppiModel,ix.a1.chain||'_',ix.a1.resi).concat(atomsOfResidue(ppiModel,ix.a2.chain||'_',ix.a2.resi));zoomToAtoms(atoms)}
+function ppiFocusIface(idx){const r=ppiIfaceList[idx];if(!r)return;zoomToAtoms(atomsOfResidue(ppiModel,r.chain,r.resi))}
 
 // ==================== Align 模块状态 ====================
 let alignModelWT=null, alignModelMut=null;
@@ -1319,8 +1360,10 @@ function renderAlignSide(){
     alignSideSyncGuard=true;try{alignViewerMut.setView(alignViewerWT.getView())}finally{alignSideSyncGuard=false}
   }
   const colWT=$('col-wt').value,opWT=+$('op-wt').value,colMUT=$('col-mut').value,opMUT=+$('op-mut').value;
-  if(alignSideModelWT)alignViewerWT.setStyle({model:alignSideModelWT,hetflag:false},{cartoon:{color:colWT,opacity:opWT,arrows:true,style:'rectangle',thickness:0.4}});
-  if(alignSideModelMut)alignViewerMut.setStyle({model:alignSideModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
+  // 半透明表面+半透明卡通在 WebGL 中无深度排序，会产生穿模斑块；表面开启时卡通强制不透明（PyMOL 惯例）
+  const surfOnSide=on('surf-align');
+  if(alignSideModelWT)alignViewerWT.setStyle({model:alignSideModelWT,hetflag:false},{cartoon:{color:colWT,opacity:surfOnSide?1:opWT,arrows:true,style:'rectangle',thickness:0.4}});
+  if(alignSideModelMut)alignViewerMut.setStyle({model:alignSideModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:surfOnSide?1:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
   const sk=alignSurfKeyNow();
   if(sk!==alignSideSurfKey){
     alignSideSurfKey=sk;
@@ -1343,8 +1386,10 @@ function renderAlign(){
   if(alignModelWT)viewer3d.setStyle({model:alignModelWT},{});if(alignModelMut)viewer3d.setStyle({model:alignModelMut},{});
   const bg=$('bg-align').value;viewer3d.setBackgroundColor(bg);const dark=bg!=='white';
   const colWT=$('col-wt').value,opWT=+$('op-wt').value;const colMUT=$('col-mut').value,opMUT=+$('op-mut').value;
-  if(alignModelWT)viewer3d.setStyle({model:alignModelWT,hetflag:false},{cartoon:{color:colWT,opacity:opWT,arrows:true,style:'rectangle',thickness:0.4}});
-  if(alignModelMut)viewer3d.setStyle({model:alignModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
+  // 表面开启时卡通强制不透明，避免半透明叠加穿模（同并排模式）
+  const surfOnA=on('surf-align');
+  if(alignModelWT)viewer3d.setStyle({model:alignModelWT,hetflag:false},{cartoon:{color:colWT,opacity:surfOnA?1:opWT,arrows:true,style:'rectangle',thickness:0.4}});
+  if(alignModelMut)viewer3d.setStyle({model:alignModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:surfOnA?1:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
   if((on('mutLine')||on('mutLabel'))&&alignHasAligned&&alignMutations.length<=MUT_VISUAL_CAP){alignMutations.forEach(mut=>{if(on('mutLine')){viewer3d.addCylinder({start:mut.wtCA,end:mut.mutCA,radius:.06,dashed:true,fromCap:1,toCap:1,color:'#f59e0b'});viewer3d.addSphere({center:mut.wtCA,radius:.22,color:'#22c55e'});viewer3d.addSphere({center:mut.mutCA,radius:.22,color:'#ef4444'})}if(on('mutLabel')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';viewer3d.addLabel(mut.wtRes+mut.resi+'→'+mut.mutRes,{position:mut.mutCA,fontSize:12,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#f59e0b',borderThickness:.8,inFront:true})}})}
   if(on('label-align')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=+$('lsize-align').value;const addLabels=(m)=>{if(!m)return;const caAtoms=m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA');caAtoms.forEach(a=>{viewer3d.addLabel((a.resn||'')+(a.resi||''),{position:pos(a),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})})};addLabels(alignModelWT);addLabels(alignModelMut)}
   alignUpdateInfo();
