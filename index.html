@@ -503,7 +503,7 @@ const vdW_RADII = {H:1.2, C:1.7, N:1.55, O:1.52, S:1.8, P:1.8, F:1.47, CL:1.75, 
 function mixHex(c1,c2,t){const p=h=>{const n=parseInt(String(h).replace('#',''),16);return isNaN(n)?[128,128,128]:[n>>16&255,n>>8&255,n&255]};const a=p(c1),b=p(c2);return 'rgb('+Math.round(a[0]+(b[0]-a[0])*t)+','+Math.round(a[1]+(b[1]-a[1])*t)+','+Math.round(a[2]+(b[2]-a[2])*t)+')'}
 // 半透明表面材质修正：只渲染正面(FrontSide=0)并写深度。
 // 3Dmol 默认双面材质会让背面壳层透过正面壳层二次混合，形成"背面重影/穿模斑块"
-function fixSurfMats(v){Object.values(v.surfaces||{}).forEach(s=>{Object.keys(s).forEach(k=>{const e=s[k];if(e&&e.mat){e.mat.side=0;e.mat.depthWrite=true;e.mat.needsUpdate=true}})})}
+function fixSurfMats(v){Object.values(v.surfaces||{}).forEach(s=>{Object.keys(s).forEach(k=>{const e=s[k];if(e&&e.mat){e.mat.side=0;e.mat.depthWrite=false;e.mat.needsUpdate=true}})})}
 
 // ==================== Shrake-Rupley 溶剂可及表面积（SASA）/ BSA 估算 ====================
 const SASA_PROBE=1.4;
@@ -1000,7 +1000,8 @@ function renderPPI(){
   applyPpiExplode(num('explode-ppi',0)); // 显示层：把配体链沿质心连线平移
   // 界面聚焦：非界面残基降透明度（独立滑块），界面残基全彩突出（独立滑块）
   const focus=on('focus-ppi'),nonifOp=num('focusop-ppi',0.25),ifOp=num('if-op-ppi',1.0);
-  const baseOp=focus?nonifOp:ifOp;
+  // 非界面卡通透明度始终用独立滑块（与聚焦开关解耦）；聚焦只控制界面高亮覆盖层
+  const baseOp=nonifOp;
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
   viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
   ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
@@ -1414,6 +1415,9 @@ function renderAlignSide(){
     if(alignSideModelMut){normalizeHydrogens(alignSideModelMut);if(alignCumRT)alignSideModelMut.selectedAtoms({}).forEach(a=>{const p=applyRT(pos(a),alignCumRT.R,alignCumRT.t);a.x=p.x;a.y=p.y;a.z=p.z})}
     alignSideSurfKey='';
     alignViewerWT.zoomTo({});alignViewerWT.zoom(0.85);
+    // Mut 子视图也必须自己 zoomTo 一次：setView 只复制位置/旋转，不复制裁剪板(slab)，
+    // 否则 Mut 视图保持默认 ±50Å 裁剪深度，结构超出部分会被直接裁掉（右侧显示不全）
+    alignViewerMut.zoomTo({});alignViewerMut.zoom(0.85);
     alignSideSyncGuard=true;try{alignViewerMut.setView(alignViewerWT.getView())}finally{alignSideSyncGuard=false}
   }
   const colWT=$('col-wt').value,opWT=+$('op-wt').value,colMUT=$('col-mut').value,opMUT=+$('op-mut').value;
