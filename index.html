@@ -998,10 +998,11 @@ function renderPPI(){
   const ck=ppiComputeKey();
   if(ck!==ppiCacheKey){computePPI();ppiCacheKey=ck;ppiDrawKey='';}
   applyPpiExplode(num('explode-ppi',0)); // 显示层：把配体链沿质心连线平移
-  // 界面聚焦：非界面残基降透明度（独立滑块），界面残基全彩突出（独立滑块）
+  // 透明度逻辑（避免多层半透明叠加杂乱）：
+  //  · 开表面时卡通一律不透明（PyMOL 惯例），界面靠"表面开窗"露出，表面浓度用表面滑块调
+  //  · 不开表面时，聚焦开启 → 非界面按非界面滑块调暗、界面按界面滑块高亮；聚焦关闭 → 全部不透明
   const focus=on('focus-ppi'),nonifOp=num('focusop-ppi',0.25),ifOp=num('if-op-ppi',1.0);
-  // 非界面卡通透明度始终用独立滑块（与聚焦开关解耦）；聚焦只控制界面高亮覆盖层
-  const baseOp=nonifOp;
+  const baseOp=(focus&&!on('surf-ppi'))?nonifOp:1.0;
   // 样式每次刷新（便宜），注意顺序：卡通底色 → 链着色 → 界面残基棒（后者覆盖前者）
   viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:pc,opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}});
   ppiChains.forEach((ch,i)=>{viewer3d.setStyle({model:ppiModel,hetflag:false,chain:ch},{cartoon:{color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length],opacity:baseOp,arrows:true,style:'rectangle',thickness:0.4}})});
