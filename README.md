@@ -6,7 +6,7 @@
 
 通过 GitHub Pages 直接访问：
 
-🔗 **[https://你的用户名.github.io/ProLigView-PPI/](https://你的用户名.github.io/ProLigView-PPI/)**
+🔗 **[https://aiminwu123-bot.github.io/ProLigView-PPI-3-1/)**
 
 > 单文件 `index.html` 包含全部三个模块，通过顶部标签页切换。
 
@@ -69,7 +69,7 @@ cd ProLigView-PPI
 
 ### 方式一：在线使用（GitHub Pages）
 
-访问 `https://你的用户名.github.io/ProLigView-PPI/` 即可使用。
+访问 `https://aiminwu123-bot.github.io/ProLigView-PPI-3-1/` 即可使用。
 
 ### 方式二：本地使用
 
