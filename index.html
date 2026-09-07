@@ -120,6 +120,9 @@ input[type="text"]{width:100%}
 
 .viewer-wrap{position:relative;flex:1;background:#000}
 .viewer{position:absolute;inset:0}
+#alignSideWrap{position:absolute;inset:0;display:none;z-index:5;background:#000;gap:2px}
+.side-pane{position:relative;flex:1;min-width:0}
+.pane-tag{position:absolute;top:8px;left:10px;z-index:6;font-size:12px;font-weight:700;padding:2px 10px;border-radius:5px;background:rgba(15,23,42,.78);pointer-events:none}
 .hint{position:absolute;inset:0;display:grid;place-items:center;color:#475569;pointer-events:none;font-size:14px}
 
 .float-info{position:absolute;left:14px;top:14px;padding:10px 14px;background:rgba(11,18,32,.92);border:1px solid #1e293b;border-radius:10px;font-size:12px;color:#94a3b8;max-width:320px;backdrop-filter:blur(4px);display:none;z-index:10}
@@ -212,10 +215,12 @@ input[type="text"]{width:100%}
     <div class="panel-body">
       <div class="row"><span>Cartoon 透明度</span><input id="op-ppi" type="range" min="0.1" max="1" step="0.05" value="0.8"></div>
       <div class="row"><span>棒粗细</span><input id="rad-ppi" type="range" min="0.08" max="0.35" step="0.01" value="0.16"></div>
+      <div class="row"><span>互作虚线宽度</span><input id="lw-ppi" type="range" min="1" max="6" step="0.5" value="3"></div>
       <div class="row"><span>显示界面残基侧链</span><i id="pocket-ppi" class="toggle on"></i></div>
       <div class="row"><span>界面聚焦（淡化非界面）</span><i id="focus-ppi" class="toggle on"></i></div>
       <div class="row"><span>非界面透明度</span><input id="focusop-ppi" type="range" min="0.02" max="0.6" step="0.02" value="0.25"></div>
       <div class="row"><span>显示分子表面</span><i id="surf-ppi" class="toggle"></i></div>
+      <div class="row"><span>表面透明度</span><input id="sop-ppi" type="range" min="0.1" max="1" step="0.05" value="0.72"></div>
       <div class="row"><span>显示残基标签</span><i id="label-ppi" class="toggle on"></i></div>
       <div class="row"><span>标签字号</span><input id="lsize-ppi" type="range" min="9" max="18" step="1" value="11"></div>
       <div class="row"><span>氢显示</span><select id="hmode-ppi"><option value="polar">仅极性</option><option value="all">全部</option><option value="none">隐藏</option></select></div>
@@ -255,7 +260,7 @@ input[type="text"]{width:100%}
       <div id="drop-wt" class="drop">拖入或点击选择 WT 结构</div>
       <input id="file-wt" hidden type="file" accept=".pdb,.ent,.cif,.mmcif">
       <div class="row" style="margin-top:8px"><span>WT 着色</span><input id="col-wt" type="color" value="#22c55e"></div>
-      <div class="row"><span>WT 透明度</span><input id="op-wt" type="range" min="0.1" max="1" step="0.05" value="0.85"></div>
+      <div class="row"><span>WT Cartoon 透明度</span><input id="op-wt" type="range" min="0.1" max="1" step="0.05" value="0.85"></div>
     </div>
   </div>
   <div class="panel open">
@@ -264,7 +269,7 @@ input[type="text"]{width:100%}
       <div id="drop-mut" class="drop">拖入或点击选择 Mut 结构</div>
       <input id="file-mut" hidden type="file" accept=".pdb,.ent,.cif,.mmcif">
       <div class="row" style="margin-top:8px"><span>Mut 着色</span><input id="col-mut" type="color" value="#ef4444"></div>
-      <div class="row"><span>Mut 透明度</span><input id="op-mut" type="range" min="0.1" max="1" step="0.05" value="0.6"></div>
+      <div class="row"><span>Mut Cartoon 透明度</span><input id="op-mut" type="range" min="0.1" max="1" step="0.05" value="0.6"></div>
     </div>
   </div>
   <div class="panel open">
@@ -302,6 +307,10 @@ input[type="text"]{width:100%}
       <div class="row"><span>显示位移虚线</span><i id="mutLine" class="toggle on"></i></div>
       <div class="row"><span>显示全部残基标签（大结构较慢）</span><i id="label-align" class="toggle"></i></div>
       <div class="row"><span>标签字号</span><input id="lsize-align" type="range" min="9" max="18" step="1" value="11"></div>
+      <div class="row"><span>并排对比（WT | Mut 同步视角）</span><i id="sideBySide" class="toggle"></i></div>
+      <div class="row"><span>显示分子表面</span><i id="surf-align" class="toggle"></i></div>
+      <div class="row"><span>表面类型</span><select id="stype-align"><option value="VWS">vdW 表面</option><option value="SAS">溶剂可及 (SAS)</option><option value="SES">溶剂排除 (SES)</option></select></div>
+      <div class="row"><span>表面透明度</span><input id="sop-align" type="range" min="0.1" max="1" step="0.05" value="0.55"></div>
     </div>
   </div>
   <button class="btn" onclick="exportPng()">导出 PNG</button>
@@ -315,7 +324,7 @@ input[type="text"]{width:100%}
       <div id="drop-wt-diff" class="drop">拖入 WT-Partner 复合物 (PDB/mmCIF)</div>
       <input id="file-wt-diff" hidden type="file" accept=".pdb,.ent,.cif,.mmcif">
       <div class="row" style="margin-top:8px"><span>WT 蛋白着色</span><input id="col-wt-diff" type="color" value="#22c55e"></div>
-      <div class="row"><span>WT 透明度</span><input id="op-wt-diff" type="range" min="0.1" max="1" step="0.05" value="0.85"></div>
+      <div class="row"><span>WT Cartoon 透明度</span><input id="op-wt-diff" type="range" min="0.1" max="1" step="0.05" value="0.85"></div>
     </div>
   </div>
   <div class="panel open">
@@ -324,7 +333,7 @@ input[type="text"]{width:100%}
       <div id="drop-mut-diff" class="drop">拖入 Mut-Partner 复合物 (PDB/mmCIF)</div>
       <input id="file-mut-diff" hidden type="file" accept=".pdb,.ent,.cif,.mmcif">
       <div class="row" style="margin-top:8px"><span>Mut 蛋白着色</span><input id="col-mut-diff" type="color" value="#ef4444"></div>
-      <div class="row"><span>Mut 透明度</span><input id="op-mut-diff" type="range" min="0.1" max="1" step="0.05" value="0.85"></div>
+      <div class="row"><span>Mut Cartoon 透明度</span><input id="op-mut-diff" type="range" min="0.1" max="1" step="0.05" value="0.85"></div>
     </div>
   </div>
   <div class="panel open">
@@ -401,6 +410,10 @@ input[type="text"]{width:100%}
     <!-- 3D 视图区 -->
     <div class="viewer-wrap">
       <div id="viewer" class="viewer"></div>
+      <div id="alignSideWrap">
+        <div class="side-pane"><div id="viewerWT-side" class="viewer"></div><span class="pane-tag" style="color:#22c55e;border:1px solid #22c55e">WT</span></div>
+        <div class="side-pane"><div id="viewerMut-side" class="viewer"></div><span class="pane-tag" style="color:#ef4444;border:1px solid #ef4444">Mut</span></div>
+      </div>
       <div id="hint" class="hint">请选择上方标签页并载入结构</div>
       <div class="float-info" id="floatInfo" style="display:none">
         <b id="infoTitle">结构信息</b><br>
@@ -526,6 +539,10 @@ function switchTab(tab){
   // 不用 viewer3d.clear()（会把模型删掉导致无法重渲染）；改为隐藏所有模型再渲染当前标签
   viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
   ppiDrawKey=''; // 形状已被清空，强制 PPI 重建虚线/标签
+  alignSurfKey='';alignSideSurfKey=''; // 表面已被清空，强制重建
+  const sideOn=(tab==='align'&&on('sideBySide'));
+  const sbw=$('alignSideWrap');if(sbw)sbw.style.display=sideOn?'flex':'none';
+  $('viewer').style.visibility=sideOn?'hidden':'visible';
   [ppiModel, alignModelWT, alignModelMut, diffModelWT, diffModelMut].forEach(m=>{ if(m) viewer3d.setStyle({model:m},{}); });
   if(tab==='ppi') renderPPI();
   else if(tab==='align') renderAlign();
@@ -533,7 +550,16 @@ function switchTab(tab){
 }
 
 function togglePanel(panel){ panel.classList.toggle('open'); }
-function exportPng(){ if(!viewer3d) return; const a=document.createElement('a'); a.href=viewer3d.pngURI(); a.download='ProLigView_'+currentTab+'.png'; a.click(); }
+function exportPng(){
+  if(!viewer3d) return;
+  // 并排对比模式：分别导出 WT / Mut 两张图
+  if(currentTab==='align'&&on('sideBySide')&&alignViewerWT&&alignViewerMut){
+    const a1=document.createElement('a');a1.href=alignViewerWT.pngURI();a1.download='ProLigView_align_WT.png';a1.click();
+    const a2=document.createElement('a');a2.href=alignViewerMut.pngURI();a2.download='ProLigView_align_Mut.png';a2.click();
+    return;
+  }
+  const a=document.createElement('a'); a.href=viewer3d.pngURI(); a.download='ProLigView_'+currentTab+'.png'; a.click();
+}
 
 // 通用辅助
 function showBusy(msg){ let el=$('__busy'); if(!el){ el=document.createElement('div'); el.id='__busy'; el.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;padding:8px 18px;border-radius:8px;z-index:99998;font-size:13px;border:1px solid #475569;box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none'; document.body.appendChild(el); } el.textContent=msg; el.style.display='block'; }
@@ -678,7 +704,7 @@ $('drop-ppi').ondragover=e=>e.preventDefault();
 $('drop-ppi').ondrop=e=>{e.preventDefault();ppiLoad(e.dataTransfer.files[0])};
 ['iHB-ppi','iSB-ppi','iHY-ppi','iPP-ppi','iPC-ppi','iSS-ppi','iXB-ppi','iVW-ppi','pocket-ppi','label-ppi','focus-ppi','surf-ppi'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='ppi')renderPPI()}});
 const ppiDebounced = debounce(()=>{ if(currentTab==='ppi') renderPPI(); }, 150);
-['bg-ppi','pc-ppi','op-ppi','rad-ppi','hmode-ppi','lsize-ppi','focusop-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
+['bg-ppi','pc-ppi','op-ppi','rad-ppi','lw-ppi','sop-ppi','hmode-ppi','lsize-ppi','focusop-ppi','hb-dist-ppi','hb-angle-ppi','sb-dist-ppi','hy-dist-ppi','pp-min-ppi','pp-max-ppi','pp-cos-min-ppi','pp-cos-max-ppi','pc-dist-ppi','pc-angle-ppi','ss-dist-ppi','xb-dist-ppi','xb-angle-ppi','vw-buffer-ppi'].forEach(id=>{if($(id)){$(id).oninput=ppiDebounced;$(id).onchange=()=>{if(currentTab==='ppi')renderPPI()}}});
 
 function ppiLoad(f){
   const r=new FileReader();
@@ -842,18 +868,20 @@ function renderPPI(){
     });
   }
   // 形状与标签只在计算结果或标签参数变化时重建（虚线/标签创建是最大开销）
-  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0);
+  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0)+'|'+num('lw-ppi',3)+'|'+num('sop-ppi',0.72);
   if(dk!==ppiDrawKey){
     ppiDrawKey=dk;
     viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
     if(on('surf-ppi')){
       ppiChains.forEach((ch,i)=>{
-        viewer3d.addSurface('VWS',{opacity:0.72,color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]},{model:ppiModel,chain:ch,hetflag:false});
+        viewer3d.addSurface('VWS',{opacity:num('sop-ppi',0.72),color:ppiChainColors[ch]||PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]},{model:ppiModel,chain:ch,hetflag:false});
       });
     }
+    const lw=num('lw-ppi',3);
     ppiIxnData.forEach(ix=>{
-      if(ix.type==='SS')viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:.12,color:ix.color,fromCap:1,toCap:1});
-      else viewer3d.addLine({start:ix.p1,end:ix.p2,color:ix.color,dashed:true,linewidth:2});
+      // WebGL 线宽在多数浏览器恒为 1px，虚线统一用 dashed 圆柱渲染才能真正加粗
+      if(ix.type==='SS')viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:lw*0.04,color:ix.color,fromCap:1,toCap:1});
+      else viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:lw*0.032,dashed:true,color:ix.color,fromCap:1,toCap:1});
       if(ix.sph)ix.sph.forEach(s=>viewer3d.addSphere({center:s.c,radius:s.r,color:s.color}));
     });
     if(on('label-ppi')){
@@ -918,30 +946,54 @@ function exportConclusionTxt(){
 // 精确聚焦工具：3Dmol 的 zoomTo 第一个参数是原子选择器（不是坐标），
 // 这里按目标残基的全部原子计算包围盒并动画居中
 function atomsOfResidue(model,chain,resi){if(!model)return[];return model.selectedAtoms({}).filter(a=>!a.hetflag&&(a.chain||'_')===chain&&a.resi===resi)}
-function zoomToAtoms(atoms){if(!atoms||!atoms.length)return;const serials=atoms.map(a=>a.serial).filter(s=>typeof s==='number');if(serials.length===atoms.length)viewer3d.zoomTo({serial:serials});else{const a=atoms[0];viewer3d.zoomTo({chain:a.chain||'_',resi:a.resi})}viewer3d.render()}
+function zoomToAtoms(atoms){
+  if(!atoms||!atoms.length)return;
+  const serials=atoms.map(a=>a.serial).filter(s=>typeof s==='number');
+  const sel=serials.length===atoms.length?{serial:serials}:{chain:atoms[0].chain||'_',resi:atoms[0].resi};
+  viewer3d.zoomTo(sel);viewer3d.render();
+  // 并排对比模式下同步聚焦左右子视图（副模型由同一文件解析，serial 一致）
+  if(currentTab==='align'&&on('sideBySide')&&alignViewerWT&&alignViewerMut){alignViewerWT.zoomTo(sel);alignViewerMut.zoomTo(sel);alignViewerWT.render();alignViewerMut.render()}
+}
 function ppiFocusIxn(idx){const ix=ppiIxnData[idx];if(!ix)return;const atoms=atomsOfResidue(ppiModel,ix.a1.chain||'_',ix.a1.resi).concat(atomsOfResidue(ppiModel,ix.a2.chain||'_',ix.a2.resi));zoomToAtoms(atoms)}
 
 // ==================== Align 模块状态 ====================
 let alignModelWT=null, alignModelMut=null;
 let alignChains=[], alignMutations=[], alignHasAligned=false;
 let alignCoreRmsd=null, alignCorePairs=0, alignAllRmsd=null, alignPairCount=0;
+// 并排对比：原始文本与格式（用于在左右子视图中重建模型副本）、累计叠加变换、数据版本号
+let alignTextWT=null, alignTextMut=null, alignFmtWT='pdb', alignFmtMut='pdb';
+let alignCumRT=null, alignDataVer=0;
+let alignViewerWT=null, alignViewerMut=null, alignSideSyncGuard=false;
+let alignSideDataVer=-1, alignSurfKey='', alignSideSurfKey='';
+// 旋转平移复合：C = B∘A（先应用 A 再应用 B）
+function composeRT(A,B){
+  const R=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++)R[i][j]=B.R[i][0]*A.R[0][j]+B.R[i][1]*A.R[1][j]+B.R[i][2]*A.R[2][j];
+  const t={x:B.R[0][0]*A.t.x+B.R[0][1]*A.t.y+B.R[0][2]*A.t.z+B.t.x,
+           y:B.R[1][0]*A.t.x+B.R[1][1]*A.t.y+B.R[1][2]*A.t.z+B.t.y,
+           z:B.R[2][0]*A.t.x+B.R[2][1]*A.t.y+B.R[2][2]*A.t.z+B.t.z};
+  return{R,t};
+}
 
 // 事件
 setupDrop('drop-wt','file-wt','WT');
 setupDrop('drop-mut','file-mut','Mut');
 function setupDrop(dropId,fileId,label){$(dropId).onclick=()=>$(fileId).click();$(fileId).onchange=e=>alignLoadFile(e.target.files[0],label);$(dropId).ondragover=e=>e.preventDefault();$(dropId).ondrop=e=>{e.preventDefault();alignLoadFile(e.dataTransfer.files[0],label)}}
-['autoAlign','mutLabel','mutLine','label-align'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='align')renderAlign()}});
+['autoAlign','mutLabel','mutLine','label-align','sideBySide','surf-align'].forEach(id=>{if($(id))$(id).onclick=()=>{$(id).classList.toggle('on');if(currentTab==='align')renderAlign()}});
 if($('seqAlign'))$('seqAlign').onclick=()=>{$('seqAlign').classList.toggle('on');alignMapData=null;if(alignModelWT&&alignModelMut){if(on('autoAlign'))runAlignment();else{detectAlignMutations();if(currentTab==='align')renderAlign()}}};
 const alignDebounced = debounce(()=>{ if(currentTab==='align') renderAlign(); }, 150);
-['bg-align','col-wt','col-mut','op-wt','op-mut','lsize-align','alignChain','mutMode'].forEach(id=>{if($(id)){$(id).oninput=alignDebounced;$(id).onchange=function(){if(this.id==='mutMode')$('mutManualWrap').style.display=this.value==='manual'?'block':'none';if(currentTab==='align')renderAlign()}}});
+['bg-align','col-wt','col-mut','op-wt','op-mut','lsize-align','alignChain','mutMode','sop-align','stype-align'].forEach(id=>{if($(id)){$(id).oninput=alignDebounced;$(id).onchange=function(){if(this.id==='mutMode')$('mutManualWrap').style.display=this.value==='manual'?'block':'none';if(currentTab==='align')renderAlign()}}});
 
 function alignLoadFile(f,label){
   const r=new FileReader();
   r.onload=async()=>{try{
     showBusy('正在解析 '+f.name+' …');await uiTick();
     const isWT=label==='WT';
-    if(isWT){if(alignModelWT)viewer3d.removeModel(alignModelWT);alignModelWT=viewer3d.addModel(r.result,/cif/i.test(f.name)?'cif':'pdb',{keepH:true});normalizeHydrogens(alignModelWT)}
-    else{if(alignModelMut)viewer3d.removeModel(alignModelMut);alignModelMut=viewer3d.addModel(r.result,/cif/i.test(f.name)?'cif':'pdb',{keepH:true});normalizeHydrogens(alignModelMut)}
+    const fmt=/cif/i.test(f.name)?'cif':'pdb';
+    if(isWT){alignTextWT=r.result;alignFmtWT=fmt}else{alignTextMut=r.result;alignFmtMut=fmt;alignCumRT=null}
+    alignDataVer++;
+    if(isWT){if(alignModelWT)viewer3d.removeModel(alignModelWT);alignModelWT=viewer3d.addModel(r.result,fmt,{keepH:true});normalizeHydrogens(alignModelWT)}
+    else{if(alignModelMut)viewer3d.removeModel(alignModelMut);alignModelMut=viewer3d.addModel(r.result,fmt,{keepH:true});normalizeHydrogens(alignModelMut)}
     if(!(isWT?alignModelWT:alignModelMut).selectedAtoms({}).length)throw new Error('文件中未解析到任何原子，请确认是有效的 PDB/mmCIF 结构文件');
     $(isWT?'drop-wt':'drop-mut').classList.add('active');
     $(isWT?'drop-wt':'drop-mut').textContent=(isWT?'WT: ':'Mut: ')+f.name;
@@ -1063,6 +1115,7 @@ function runAlignment(){
   const{R,t}=fit;
   if(![R[0][0],R[1][1],R[2][2],t.x,t.y,t.z].every(isFinite)){alert('叠加计算失败：坐标数据异常（含 NaN/Infinity），请检查输入文件');return}
   const mutAll=alignModelMut.selectedAtoms({});mutAll.forEach(a=>{const v=applyRT(pos(a),R,t);a.x=v.x;a.y=v.y;a.z=v.z});
+  alignCumRT=alignCumRT?composeRT(alignCumRT,{R,t}):{R,t};alignDataVer++;
   let sAll=0;pairs.forEach(p=>{sAll+=dist(pos(p.mut),pos(p.wt))**2});
   alignCoreRmsd=fit.rmsd;alignCorePairs=fit.core;alignAllRmsd=Math.sqrt(sAll/pairs.length);alignPairCount=pairs.length;
   $('stat-rmsd').textContent=fit.rmsd.toFixed(3);
@@ -1090,9 +1143,68 @@ function parseAlignManualMut(){const txt=$('mutInput').value.trim();if(!txt)retu
 function renderAlignMutList(){const wrap=$('mutList');if(!alignMutations.length){wrap.innerHTML='<div style="text-align:center;color:#475569;padding:12px;font-size:12px">未识别突变位点</div>';return}let html='';if(alignMutations.length>MUT_VISUAL_CAP)html+='<div style="color:#f59e0b;font-size:11px;padding:6px 8px;background:#451a03;border-radius:6px;margin-bottom:6px">检测到 '+alignMutations.length+' 个突变位点（超过 '+MUT_VISUAL_CAP+'），已自动隐藏位移虚线与标签以保证页面流畅。若两份结构差异如此之大，请确认链/残基编号是否对应。</div>';alignMutations.forEach((mut,i)=>{const d=dist(mut.wtCA,mut.mutCA);html+='<div class="mut-row" onclick="alignFocusMut('+i+')">'+'<span class="mut-chain">'+mut.chain+'</span>'+'<span class="mut-pos">'+mut.resi+'</span>'+'<span class="mut-res">'+mut.wtRes+'→'+mut.mutRes+'</span>'+'<span style="color:#64748b;font-size:10px;margin-left:auto">Δ='+d.toFixed(2)+'Å</span></div>'});wrap.innerHTML=html}
 function alignFocusMut(idx){const m=alignMutations[idx];if(!m)return;const atoms=atomsOfResidue(alignModelWT,m.chain,m.resi).concat(atomsOfResidue(alignModelMut,m.chain,m.resi));zoomToAtoms(atoms)}
 
+function alignUpdateInfo(){
+  $('infoTitle').textContent='结构叠加';
+  $('infoLine1').innerHTML=alignModelWT?'<b style="color:#22c55e">WT</b> 已载入':'WT: 未载入';
+  $('infoLine2').innerHTML=alignModelMut?'<b style="color:#ef4444">Mut</b> 已载入':'Mut: 未载入';
+  $('infoDetail').textContent='RMSD: '+($('stat-rmsd').textContent||'—')+'Å(核心'+alignCorePairs+'/'+alignPairCount+'对'+(alignAllRmsd!=null?'，全体'+alignAllRmsd.toFixed(2)+'Å':'')+') | 突变: '+alignMutations.length+'个'+((on('seqAlign')&&alignMapData&&alignMapData.nAligned)?' | 一致性: '+(100*alignMapData.nIdent/alignMapData.nAligned).toFixed(1)+'%':'');
+}
+// 表面缓存键：类型/透明度/配色/数据任一变化才重建（表面重建开销大，不能随滑块每帧重算）
+function alignSurfKeyNow(){return (on('surf-align')?1:0)+'|'+num('sop-align',.55)+'|'+($('stype-align')?$('stype-align').value:'VWS')+'|'+$('col-wt').value+'|'+$('col-mut').value+'|'+alignDataVer}
+function addAlignSurfaces(v,wtModel,mutModel){
+  const stype=$('stype-align')?$('stype-align').value:'VWS';const sop=num('sop-align',0.55);
+  if(wtModel)v.addSurface(stype,{opacity:sop,color:$('col-wt').value},{model:wtModel,hetflag:false});
+  if(mutModel)v.addSurface(stype,{opacity:sop,color:$('col-mut').value},{model:mutModel,hetflag:false});
+}
+// ==================== 并排对比（WT | Mut 同步视角） ====================
+let alignSideModelWT=null, alignSideModelMut=null;
+function ensureAlignSideViewers(){
+  if(alignViewerWT)return;
+  const bg=$('bg-align')?$('bg-align').value:'black';
+  alignViewerWT=$3Dmol.createViewer('viewerWT-side',{backgroundColor:bg,antialias:true});
+  alignViewerMut=$3Dmol.createViewer('viewerMut-side',{backgroundColor:bg,antialias:true});
+  // 双向同步视角：一边旋转/缩放/平移，另一边立即跟随
+  alignViewerWT.setViewChangeCallback(()=>{if(alignSideSyncGuard)return;alignSideSyncGuard=true;try{alignViewerMut.setView(alignViewerWT.getView());alignViewerMut.render()}finally{alignSideSyncGuard=false}});
+  alignViewerMut.setViewChangeCallback(()=>{if(alignSideSyncGuard)return;alignSideSyncGuard=true;try{alignViewerWT.setView(alignViewerMut.getView());alignViewerWT.render()}finally{alignSideSyncGuard=false}});
+}
+function renderAlignSide(){
+  ensureAlignSideViewers();
+  if(alignViewerWT.resize)alignViewerWT.resize();if(alignViewerMut.resize)alignViewerMut.resize();
+  const bg=$('bg-align').value;alignViewerWT.setBackgroundColor(bg);alignViewerMut.setBackgroundColor(bg);
+  // 数据或叠加结果变化时，用原始文本重建子视图模型副本，并对 Mut 副本施加累计叠加变换
+  if(alignSideDataVer!==alignDataVer){
+    alignSideDataVer=alignDataVer;
+    [alignViewerWT,alignViewerMut].forEach(v=>{v.removeAllModels();v.removeAllSurfaces();v.removeAllShapes();v.removeAllLabels()});
+    alignSideModelWT=alignTextWT?alignViewerWT.addModel(alignTextWT,alignFmtWT,{keepH:true}):null;
+    alignSideModelMut=alignTextMut?alignViewerMut.addModel(alignTextMut,alignFmtMut,{keepH:true}):null;
+    if(alignSideModelWT)normalizeHydrogens(alignSideModelWT);
+    if(alignSideModelMut){normalizeHydrogens(alignSideModelMut);if(alignCumRT)alignSideModelMut.selectedAtoms({}).forEach(a=>{const p=applyRT(pos(a),alignCumRT.R,alignCumRT.t);a.x=p.x;a.y=p.y;a.z=p.z})}
+    alignSideSurfKey='';
+    alignViewerWT.zoomTo({});alignViewerWT.zoom(0.85);
+    alignSideSyncGuard=true;try{alignViewerMut.setView(alignViewerWT.getView())}finally{alignSideSyncGuard=false}
+  }
+  const colWT=$('col-wt').value,opWT=+$('op-wt').value,colMUT=$('col-mut').value,opMUT=+$('op-mut').value;
+  if(alignSideModelWT)alignViewerWT.setStyle({model:alignSideModelWT,hetflag:false},{cartoon:{color:colWT,opacity:opWT,arrows:true,style:'rectangle',thickness:0.4}});
+  if(alignSideModelMut)alignViewerMut.setStyle({model:alignSideModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
+  const sk=alignSurfKeyNow();
+  if(sk!==alignSideSurfKey){
+    alignSideSurfKey=sk;
+    alignViewerWT.removeAllSurfaces();alignViewerMut.removeAllSurfaces();
+    if(on('surf-align')){addAlignSurfaces(alignViewerWT,alignSideModelWT,null);addAlignSurfaces(alignViewerMut,null,alignSideModelMut)}
+  }
+  alignViewerWT.render();alignViewerMut.render();
+}
 function renderAlign(){
   if(currentTab!=='align')return;
-  viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
+  // 并排对比模式：隐藏主视图，渲染左右同步子视图
+  if(on('sideBySide')){
+    $('viewer').style.visibility='hidden';$('alignSideWrap').style.display='flex';
+    renderAlignSide();alignUpdateInfo();return;
+  }
+  $('alignSideWrap').style.display='none';$('viewer').style.visibility='visible';
+  viewer3d.removeAllShapes();viewer3d.removeAllLabels();
+  const sk=alignSurfKeyNow();
+  if(sk!==alignSurfKey){alignSurfKey=sk;viewer3d.removeAllSurfaces();if(on('surf-align'))addAlignSurfaces(viewer3d,alignModelWT,alignModelMut)}
   if(alignModelWT)viewer3d.setStyle({model:alignModelWT},{});if(alignModelMut)viewer3d.setStyle({model:alignModelMut},{});
   const bg=$('bg-align').value;viewer3d.setBackgroundColor(bg);const dark=bg!=='white';
   const colWT=$('col-wt').value,opWT=+$('op-wt').value;const colMUT=$('col-mut').value,opMUT=+$('op-mut').value;
@@ -1100,10 +1212,7 @@ function renderAlign(){
   if(alignModelMut)viewer3d.setStyle({model:alignModelMut,hetflag:false},{cartoon:{color:colMUT,opacity:opMUT,arrows:true,style:'rectangle',thickness:0.4}});
   if((on('mutLine')||on('mutLabel'))&&alignHasAligned&&alignMutations.length<=MUT_VISUAL_CAP){alignMutations.forEach(mut=>{if(on('mutLine')){viewer3d.addCylinder({start:mut.wtCA,end:mut.mutCA,radius:.06,dashed:true,fromCap:1,toCap:1,color:'#f59e0b'});viewer3d.addSphere({center:mut.wtCA,radius:.22,color:'#22c55e'});viewer3d.addSphere({center:mut.mutCA,radius:.22,color:'#ef4444'})}if(on('mutLabel')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';viewer3d.addLabel(mut.wtRes+mut.resi+'→'+mut.mutRes,{position:mut.mutCA,fontSize:12,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#f59e0b',borderThickness:.8,inFront:true})}})}
   if(on('label-align')){const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=+$('lsize-align').value;const addLabels=(m)=>{if(!m)return;const caAtoms=m.selectedAtoms({}).filter(a=>!a.hetflag&&(a.atom||'').trim()==='CA');caAtoms.forEach(a=>{viewer3d.addLabel((a.resn||'')+(a.resi||''),{position:pos(a),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})})};addLabels(alignModelWT);addLabels(alignModelMut)}
-  $('infoTitle').textContent='结构叠加';
-  $('infoLine1').innerHTML=alignModelWT?'<b style="color:#22c55e">WT</b> 已载入':'WT: 未载入';
-  $('infoLine2').innerHTML=alignModelMut?'<b style="color:#ef4444">Mut</b> 已载入':'Mut: 未载入';
-  $('infoDetail').textContent='RMSD: '+($('stat-rmsd').textContent||'—')+'Å(核心'+alignCorePairs+'/'+alignPairCount+'对'+(alignAllRmsd!=null?'，全体'+alignAllRmsd.toFixed(2)+'Å':'')+') | 突变: '+alignMutations.length+'个'+((on('seqAlign')&&alignMapData&&alignMapData.nAligned)?' | 一致性: '+(100*alignMapData.nIdent/alignMapData.nAligned).toFixed(1)+'%':'');
+  alignUpdateInfo();
   viewer3d.render();
 }
 
