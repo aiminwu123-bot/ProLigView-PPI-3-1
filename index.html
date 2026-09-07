@@ -503,7 +503,7 @@ const vdW_RADII = {H:1.2, C:1.7, N:1.55, O:1.52, S:1.8, P:1.8, F:1.47, CL:1.75, 
 function mixHex(c1,c2,t){const p=h=>{const n=parseInt(String(h).replace('#',''),16);return isNaN(n)?[128,128,128]:[n>>16&255,n>>8&255,n&255]};const a=p(c1),b=p(c2);return 'rgb('+Math.round(a[0]+(b[0]-a[0])*t)+','+Math.round(a[1]+(b[1]-a[1])*t)+','+Math.round(a[2]+(b[2]-a[2])*t)+')'}
 // 半透明表面材质修正：只渲染正面(FrontSide=0)并写深度。
 // 3Dmol 默认双面材质会让背面壳层透过正面壳层二次混合，形成"背面重影/穿模斑块"
-function fixSurfMats(v){Object.values(v.surfaces||{}).forEach(s=>{Object.keys(s).forEach(k=>{const e=s[k];if(e&&e.mat){e.mat.side=0;e.mat.depthWrite=false;e.mat.needsUpdate=true}})})}
+function fixSurfMats(v){Object.values(v.surfaces||{}).forEach(s=>{Object.keys(s).forEach(k=>{const e=s[k];if(e&&e.mat){e.mat.side=0;e.mat.depthWrite=true;e.mat.needsUpdate=true}})})}
 
 // ==================== Shrake-Rupley 溶剂可及表面积（SASA）/ BSA 估算 ====================
 const SASA_PROBE=1.4;
