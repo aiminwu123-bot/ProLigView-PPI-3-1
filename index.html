@@ -214,7 +214,7 @@ input[type="text"]{width:100%}
         <div class="stat-card"><div class="num" id="nRec-ppi">0</div><div class="label">受体链</div></div>
         <div class="stat-card"><div class="num" id="nLig-ppi">0</div><div class="label">配体链</div></div>
       </div>
-      <div style="font-size:11px;color:#64748b;margin:10px 0 4px">链配色（默认自动调色板，可逐链修改）</div>
+      <div style="font-size:11px;color:#64748b;margin:10px 0 4px">链命名与配色（命名留空则用原链名，命名会同步到列表/结论/导出）</div>
       <div id="chainColors-ppi"></div>
     </div>
   </div>
@@ -815,6 +815,7 @@ let ppiModel = null;
 let ppiChains = [];
 let ppiChainRoles = {};
 let ppiChainColors = {};
+let ppiChainNames = {};
 let ppiIxnData = [];
 const PPI_CHAIN_PALETTE = ['#E38C8C','#6E93D6','#E0C060','#B58FD6','#8FC6E0','#5FB98F','#C0C0C8','#7F8FA6','#F0A35E','#A3D9A5'];
 
@@ -844,6 +845,7 @@ function ppiLoad(f){
     ppiChains=[...new Set(all.filter(a=>!a.hetflag).map(a=>a.chain||'_'))].sort();
     ppiChainRoles={};ppiChains.forEach((ch,i)=>{ppiChainRoles[ch]=i===0?'receptor':'ligand'});
     ppiChainColors={};ppiChains.forEach((ch,i)=>{ppiChainColors[ch]=PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]});
+    ppiChainNames={};
     ppiCacheKey='';ppiDrawKey='';
     ppiBuildChainUI();
     $('hint').style.display='none';
@@ -852,21 +854,33 @@ function ppiLoad(f){
   }catch(e){alert('解析失败: '+e.message)}};
   r.readAsText(f);
 }
+function chainDisp(ch){const n=(ppiChainNames[ch]||'').trim();return n?n+' ('+ch+')':'Chain '+ch}
+function chainTag(ch){const n=(ppiChainNames[ch]||'').trim();return n?n:ch}
+function ppiResLabel(a){return chainTag(a.chain||'_')+':'+(a.resn||'')+(a.resi||'')}
 function ppiBuildChainUI(){
   const grid=$('chainGrid-ppi');grid.innerHTML='';
-  ppiChains.forEach(ch=>{const div=document.createElement('div');div.className='chain-chip '+(ppiChainRoles[ch]||'');div.textContent='Chain '+ch;div.onclick=()=>ppiCycleRole(ch,div);grid.appendChild(div)});
-  // 逐链颜色选择器
+  ppiChains.forEach(ch=>{const div=document.createElement('div');div.className='chain-chip '+(ppiChainRoles[ch]||'');div.textContent=chainDisp(ch);div.onclick=()=>ppiCycleRole(ch,div);grid.appendChild(div)});
+  // 逐链命名 + 颜色选择器
   const crow=$('chainColors-ppi');crow.innerHTML='';
   ppiChains.forEach(ch=>{
     const row=document.createElement('div');row.className='row';row.style.margin='4px 0';
     const lab=document.createElement('span');lab.style.cssText='font-size:11.5px;color:#cbd5e1';lab.textContent='Chain '+ch;
+    const nameInp=document.createElement('input');nameInp.type='text';nameInp.placeholder='命名';nameInp.value=ppiChainNames[ch]||'';
+    nameInp.style.cssText='flex:1;min-width:0;background:#0b1220;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:11px;padding:2px 6px;margin:0 6px';
+    nameInp.oninput=()=>{ppiChainNames[ch]=nameInp.value;ppiRefreshChainNames()};
     const inp=document.createElement('input');inp.type='color';inp.value=ppiChainColors[ch]||'#5FB98F';
     inp.oninput=()=>{ppiChainColors[ch]=inp.value;if(currentTab==='ppi')renderPPI()};
-    row.appendChild(lab);row.appendChild(inp);crow.appendChild(row);
+    row.appendChild(lab);row.appendChild(nameInp);row.appendChild(inp);crow.appendChild(row);
   });
   ppiUpdateStats();
   $('infoTitle').textContent='结构信息';
-  $('infoLine1').innerHTML=ppiChains.map(c=>'<b>Chain '+c+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':'配体')+')').join(' · ');
+  $('infoLine1').innerHTML=ppiChains.map(c=>'<b>'+chainDisp(c)+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':'配体')+')').join(' · ');
+}
+function ppiRefreshChainNames(){
+  const grid=$('chainGrid-ppi');
+  [...grid.children].forEach((div,i)=>{if(ppiChains[i]!==undefined)div.textContent=chainDisp(ppiChains[i])});
+  $('infoLine1').innerHTML=ppiChains.map(c=>'<b>'+chainDisp(c)+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':(ppiChainRoles[c]==='ligand'?'配体':'未选'))+')').join(' · ');
+  ppiUpdateStatsTable();ppiUpdateConclusion();
 }
 function ppiCycleRole(ch,el){const cur=ppiChainRoles[ch];ppiChainRoles[ch]=cur==='receptor'?'ligand':(cur==='ligand'?'':'receptor');el.className='chain-chip '+(ppiChainRoles[ch]||'');ppiUpdateStats();renderPPI()}
 function ppiSetAllRec(){ppiChains.forEach(c=>ppiChainRoles[c]='receptor');ppiBuildChainUI();renderPPI()}
@@ -1089,7 +1103,7 @@ function renderPPI(){
   ppiUpdateStatsTable();
   ppiUpdateConclusion();
   $('infoTitle').textContent='结构信息';
-  $('infoLine1').innerHTML=ppiChains.map(c=>'<b>Chain '+c+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':(ppiChainRoles[c]==='ligand'?'配体':'未选'))+')').join(' · ');
+  $('infoLine1').innerHTML=ppiChains.map(c=>'<b>'+chainDisp(c)+'</b>('+(ppiChainRoles[c]==='receptor'?'受体':(ppiChainRoles[c]==='ligand'?'配体':'未选'))+')').join(' · ');
   $('infoLine2').textContent='界面残基: '+ppiIfaceStats.eff+' 个(原始'+ppiIfaceStats.raw+'，核心'+ppiIfaceStats.core+') | 接触对: '+ppiIxnData.length+' 对 | BSA: '+(typeof ppiBsa==='number'?Math.round(ppiBsa)+' Å²':'—');
   $('infoDetail').textContent='氢键 '+ppiIxnData.filter(x=>x.type==='HB').length+' | 盐桥 '+ppiIxnData.filter(x=>x.type==='SB').length+' | 疏水 '+ppiIxnData.filter(x=>x.type==='HY').length;
   viewer3d.render();
@@ -1108,7 +1122,7 @@ function ppiUpdateStatsTable(){
       if($('ifaceCount-ppi'))$('ifaceCount-ppi').textContent='（有效 '+ppiIfaceStats.eff+' / 原始 '+ppiIfaceStats.raw+' / 核心 '+ppiIfaceStats.core+'）';
       iw.innerHTML=ppiIfaceList.map((r,i)=>{
         const col=ppiChainColors[r.chain]||PPI_CHAIN_PALETTE[Math.max(0,ppiChains.indexOf(r.chain))%PPI_CHAIN_PALETTE.length];
-        return '<span class="ifacechip'+(r.eff?'':' dim')+(r.core?' core':'')+'" style="border-color:'+col+'" onclick="ppiFocusIface('+i+')" title="Chain '+r.chain+' · '+(r.b!==null?'pLDDT '+r.b.toFixed(0):'无 pLDDT')+'">'+r.chain+':'+r.resn+r.resi+'</span>';
+        return '<span class="ifacechip'+(r.eff?'':' dim')+(r.core?' core':'')+'" style="border-color:'+col+'" onclick="ppiFocusIface('+i+')" title="'+chainDisp(r.chain)+' · '+(r.b!==null?'pLDDT '+r.b.toFixed(0):'无 pLDDT')+'">'+chainTag(r.chain)+':'+r.resn+r.resi+'</span>';
       }).join('');
     }
   }
@@ -1116,7 +1130,7 @@ function ppiUpdateStatsTable(){
   const typeMap={'HB':'氢键','SB':'盐桥','HY':'疏水','ππ':'π-π','πCat':'π-Cat','SS':'二硫','XB':'卤键','vdW':'vdW'};
   const colorMap={'HB':'#facc15','SB':'#f97316','HY':'#a3a3a3','ππ':'#22c55e','πCat':'#38bdf8','SS':'#ef4444','XB':'#06b6d4','vdW':'#c084fc'};
   let html='<table class="ixn-table"><thead><tr><th>类型</th><th>链A</th><th>残基A</th><th>链B</th><th>残基B</th><th>详情</th></tr></thead><tbody>';
-  ppiIxnData.forEach((ix,i)=>{const a1=ix.a1,a2=ix.a2;const resA=(a1.resn||'')+(a1.resi||''),resB=(a2.resn||'')+(a2.resi||'');const chA=a1.chain||'_',chB=a2.chain||'_';html+='<tr onclick="ppiFocusIxn('+i+')" style="border-left:3px solid '+colorMap[ix.type]+'"><td><span class="badge" style="background:'+colorMap[ix.type]+'20;color:'+colorMap[ix.type]+';border:1px solid '+colorMap[ix.type]+'">'+typeMap[ix.type]+'</span></td><td>'+chA+'</td><td>'+resA+'</td><td>'+chB+'</td><td>'+resB+'</td><td style="font-size:10px;color:#94a3b8">'+ix.detail+'</td></tr>'});
+  ppiIxnData.forEach((ix,i)=>{const a1=ix.a1,a2=ix.a2;const resA=(a1.resn||'')+(a1.resi||''),resB=(a2.resn||'')+(a2.resi||'');const chA=chainTag(a1.chain||'_'),chB=chainTag(a2.chain||'_');html+='<tr onclick="ppiFocusIxn('+i+')" style="border-left:3px solid '+colorMap[ix.type]+'"><td><span class="badge" style="background:'+colorMap[ix.type]+'20;color:'+colorMap[ix.type]+';border:1px solid '+colorMap[ix.type]+'">'+typeMap[ix.type]+'</span></td><td>'+chA+'</td><td>'+resA+'</td><td>'+chB+'</td><td>'+resB+'</td><td style="font-size:10px;color:#94a3b8">'+ix.detail+'</td></tr>'});
   html+='</tbody></table>';wrap.innerHTML=html;
 }
 // ==================== 结论生成 ====================
@@ -1132,10 +1146,10 @@ function ppiUpdateConclusion(){
   const parts=order.filter(t=>c(t)>0).map(t=>IXN_TYPE_CN[t]+' '+c(t)+' 对');
   // 关键残基：参与接触最多的前 5 个
   const cnt={};
-  ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=resLabel(a);cnt[k]=(cnt[k]||0)+1}})});
+  ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=ppiResLabel(a);cnt[k]=(cnt[k]||0)+1}})});
   const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>k+'('+v+')');
   // 特异性互作（非 vdW，已按残基对去重）
-  const spec=ppiIxnData.filter(x=>x.type!=='vdW').slice(0,8).map(x=>IXN_TYPE_CN[x.type]+' '+resLabel(x.a1)+' ↔ '+resLabel(x.a2));
+  const spec=ppiIxnData.filter(x=>x.type!=='vdW').slice(0,8).map(x=>IXN_TYPE_CN[x.type]+' '+ppiResLabel(x.a1)+' ↔ '+ppiResLabel(x.a2));
   const specN=ppiIxnData.filter(x=>x.type!=='vdW').length;
   const strong=c('HB')+c('SB')+c('ππ')+c('πCat')+c('SS')+c('XB');
   const bsaNum=(typeof ppiBsa==='number')?ppiBsa:null;
@@ -1152,7 +1166,7 @@ function ppiUpdateConclusion(){
   const bsaLine=bsaNum!==null?'<b style="color:#22d3ee">BSA 埋藏面积</b>：'+Math.round(bsaNum)+' Å²（参考：&lt;500 弱/瞬态，500–1500 中等，&gt;1500 强）。<br>':'';
   const noH=!ppiModel.selectedAtoms({}).some(isHydrogen);
   el.innerHTML=
-    '<b style="color:#22d3ee">界面概况</b>：受体链 '+recChains.join(',')+' ↔ 配体链 '+ligChains.join(',')+'；有效界面残基 '+eff+' 个（原始 '+ppiIfaceStats.raw+'，核心 pLDDT>70 共 '+ppiIfaceStats.core+'），接触对 '+ppiIxnData.length+' 对（按残基对去重）。<br>'+
+    '<b style="color:#22d3ee">界面概况</b>：受体链 '+recChains.map(chainDisp).join(',')+' ↔ 配体链 '+ligChains.map(chainDisp).join(',')+'；有效界面残基 '+eff+' 个（原始 '+ppiIfaceStats.raw+'，核心 pLDDT>70 共 '+ppiIfaceStats.core+'），接触对 '+ppiIxnData.length+' 对（按残基对去重）。<br>'+
     bsaLine+
     '<b style="color:#22d3ee">作用力构成</b>：'+(parts.length?parts.join('，'):'无')+'。<br>'+
     '<b style="color:#22d3ee">关键残基</b>（接触频次 Top5）：'+(top.length?top.join('，'):'无')+'。<br>'+
@@ -1170,12 +1184,12 @@ function exportConclusionTxt(){
   const order=['HB','SB','HY','ππ','πCat','SS','XB','vdW'];
   const bsaNum=(typeof ppiBsa==='number')?ppiBsa:null;
   const cnt={};
-  ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=resLabel(a);cnt[k]=(cnt[k]||0)+1}})});
+  ppiIxnData.forEach(ix=>{[ix.a1,ix.a2].forEach(a=>{if(a.resn&&a.resn!=='CAT'){const k=ppiResLabel(a);cnt[k]=(cnt[k]||0)+1}})});
   const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const L=[];
   L.push('========== ProLigView PPI 分析报告 ==========');
   L.push('生成时间: '+new Date().toLocaleString());
-  L.push('受体链: '+(recChains.join(',')||'-')+'  |  配体链: '+(ligChains.join(',')||'-'));
+  L.push('受体链: '+(recChains.map(chainDisp).join(',')||'-')+'  |  配体链: '+(ligChains.map(chainDisp).join(',')||'-'));
   L.push('统一口径: 界面=链间重原子 ≤'+num('if-dist-ppi',5.0)+'Å（残基级）；pLDDT>50 过滤'+(on('plddt-ppi')?'开启':'关闭')+'；互作按残基对去重计数');
   L.push('');
   L.push('[界面与置信度]');
@@ -1194,7 +1208,7 @@ function exportConclusionTxt(){
   L.push('[互作统计详情]（全部接触对）');
   L.push('类型\t链A:残基A\t链B:残基B\t详情\t距离(Å)');
   ppiIxnData.forEach(ix=>{
-    L.push(IXN_TYPE_CN[ix.type]+'\t'+resLabel(ix.a1)+'\t'+resLabel(ix.a2)+'\t'+ix.detail+'\t'+(typeof ix.score==='number'?ix.score.toFixed(2):''));
+    L.push(IXN_TYPE_CN[ix.type]+'\t'+ppiResLabel(ix.a1)+'\t'+ppiResLabel(ix.a2)+'\t'+ix.detail+'\t'+(typeof ix.score==='number'?ix.score.toFixed(2):''));
   });
   L.push('');
   L.push('[综合评估]');
