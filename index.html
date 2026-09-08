@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ProLigView — 蛋白互作分析套件</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
 <style>
 *{box-sizing:border-box}
 html,body,#app{height:100%;margin:0;font-family:"Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden}
@@ -312,7 +313,6 @@ input[type="text"]{width:100%}
       <div id="pairTableWrap" style="max-height:200px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px;display:none"></div>
       <div id="pairNetSummary" style="font-size:11.5px;line-height:1.7;color:#cbd5e1;margin-top:8px"></div>
       <button class="btn btn-sm btn-secondary" id="btnPairExport" onclick="exportPairwiseTxt()" style="margin-top:8px;display:none">导出多链网络报告 (TXT，含 SCI 结果描述)</button>
-      <button class="btn btn-sm btn-secondary" id="btnPairImages" onclick="ppiExportEvidenceImages()" style="margin-top:8px;display:none">导出结论配图 (PNG，按结论自动生成)</button>
     </div>
   </div>
   <div class="panel open">
@@ -323,6 +323,7 @@ input[type="text"]{width:100%}
     </div>
   </div>
   <button class="btn" onclick="exportPng()">导出 PNG</button>
+  <button class="btn" onclick="exportGif()">导出 GIF</button>
 </div>
 
 <!-- ==================== Align 模块 ==================== -->
@@ -387,6 +388,7 @@ input[type="text"]{width:100%}
     </div>
   </div>
   <button class="btn" onclick="exportPng()">导出 PNG</button>
+  <button class="btn" onclick="exportGif()">导出 GIF</button>
 </div>
 
 <!-- ==================== Diff 模块 ==================== -->
@@ -474,6 +476,7 @@ input[type="text"]{width:100%}
     </div>
   </div>
   <button class="btn" onclick="exportPng()">导出 PNG</button>
+  <button class="btn" onclick="exportGif()">导出 GIF</button>
   <button class="btn btn-secondary" onclick="exportDiffCSV()" style="margin-top:6px">导出差异报告 (CSV)</button>
 </div>
 
@@ -700,6 +703,42 @@ function exportPng(){
   const a=document.createElement('a'); a.href=hiResURI(viewer3d,S); a.download='ProLigView_'+currentTab+'.png'; a.click();
 }
 
+// 导出旋转 GIF：绕竖直轴匀速旋转一周（36 帧 ≈ 3.2s 循环），帧图缩到最长边 480px 控制文件体积
+async function exportGif(){
+  if(!viewer3d)return;
+  if(currentTab==='align'&&on('sideBySide')&&alignViewerWT&&alignViewerMut){alert('并排对比模式暂不支持 GIF，请先关闭并排对比再导出');return}
+  if(typeof GIF==='undefined'){alert('GIF 编码器未加载成功（gif.js 需联网加载），请检查网络后刷新页面重试');return}
+  const frames=36,step=360/frames,delay=90,maxSide=480;
+  const savedView=(()=>{try{return viewer3d.getView()}catch(e){return null}})();
+  try{
+    const src=viewer3d.getCanvas();
+    const scale=Math.min(1,maxSide/Math.max(src.width,src.height,1));
+    const cv=document.createElement('canvas');cv.width=Math.max(2,Math.round(src.width*scale));cv.height=Math.max(2,Math.round(src.height*scale));
+    const ctx=cv.getContext('2d');
+    const gif=new GIF({workers:2,quality:10,workerScript:'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js',width:cv.width,height:cv.height});
+    for(let i=0;i<frames;i++){
+      showBusy('正在采集 GIF 帧 '+(i+1)+'/'+frames+' …');
+      viewer3d.render();
+      ctx.drawImage(viewer3d.getCanvas(),0,0,cv.width,cv.height);
+      gif.addFrame(ctx,{copy:true,delay:delay});
+      viewer3d.rotate(step,'y');
+      await uiTick();
+    }
+    showBusy('正在编码 GIF …');
+    gif.on('progress',p=>showBusy('正在编码 GIF '+Math.round(p*100)+'% …'));
+    gif.on('finished',blob=>{
+      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='ProLigView_旋转展示_'+currentTab+'.gif';a.click();URL.revokeObjectURL(url);
+      if(savedView){try{viewer3d.setView(savedView);viewer3d.render()}catch(e){}}
+      hideBusy();
+    });
+    gif.on('abort',()=>{hideBusy();alert('GIF 编码被中断')});
+    gif.render();
+  }catch(e){
+    if(savedView){try{viewer3d.setView(savedView);viewer3d.render()}catch(_){}}
+    hideBusy();alert('GIF 导出失败: '+e.message);
+  }
+}
+
 // 通用辅助
 function showBusy(msg){ let el=$('__busy'); if(!el){ el=document.createElement('div'); el.id='__busy'; el.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;padding:8px 18px;border-radius:8px;z-index:99998;font-size:13px;border:1px solid #475569;box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none'; document.body.appendChild(el); } el.textContent=msg; el.style.display='block'; }
 function hideBusy(){ const el=$('__busy'); if(el) el.style.display='none'; }
@@ -874,7 +913,7 @@ function ppiLoad(f){
     ppiChainNames={};
     ppiChainResN={};ppiChains.forEach(ch=>{const rs=new Set();all.forEach(a=>{if(!a.hetflag&&(a.chain||'_')===ch)rs.add(a.resi)});ppiChainResN[ch]=rs.size});
     ppiCacheKey='';ppiDrawKey='';
-    ppiPairNet=null;const _ps=$('pairNetSvg');if(_ps)_ps.innerHTML='';const _pt=$('pairTableWrap');if(_pt){_pt.style.display='none';_pt.innerHTML=''}const _pm=$('pairNetSummary');if(_pm)_pm.innerHTML='';const _pe=$('btnPairExport');if(_pe)_pe.style.display='none';const _pi=$('btnPairImages');if(_pi)_pi.style.display='none';
+    ppiPairNet=null;const _ps=$('pairNetSvg');if(_ps)_ps.innerHTML='';const _pt=$('pairTableWrap');if(_pt){_pt.style.display='none';_pt.innerHTML=''}const _pm=$('pairNetSummary');if(_pm)_pm.innerHTML='';const _pe=$('btnPairExport');if(_pe)_pe.style.display='none';
     ppiAf3Iptm=null;ppiAf3Pae=null;ppiAf3Meta=null;const _af=$('af3confInfo');if(_af)_af.innerHTML='';
     ppiBuildChainUI();
     $('hint').style.display='none';
@@ -1243,7 +1282,6 @@ function ppiRenderPairNet(){
   s+='<span style="color:#64748b;font-size:10px">判定口径与「分析结论」一致：高=有效界面≥12 且特异性互作≥2 且 BSA≥500Å²；中=特异性≥1 且（界面≥4 或 BSA≥200Å²）；低置信=任一侧界面残基全部位于无序/低置信区（无 pLDDT>70 且 ≥70% pLDDT<50）。修改阈值后请重新运行。</span>';
   $('pairNetSummary').innerHTML=s;
   $('btnPairExport').style.display='inline-block';
-  $('btnPairImages').style.display='inline-block';
 }
 // —— SCI 风格结果描述（英文 + 中文）——
 function buildPairSciText(net){
@@ -1330,106 +1368,6 @@ function exportPairwiseTxt(){
   L.push('注: 本报告为基于几何规则的自动化评估，仅供参考，需结合实验数据验证。');
   const blob=new Blob([L.join('\n')],{type:'text/plain;charset=utf-8;'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_多链互作网络报告.txt';a.click();URL.revokeObjectURL(url);
-}
-// ==================== 结论配图自动导出 ====================
-// 按两两分析结论自动生成证据图：概览、每对直接互作的界面特写、低置信接触、桥梁链介导关系、互作网络图
-const IXN_COLORS={'HB':'#facc15','SB':'#f97316','HY':'#a3a3a3','ππ':'#22c55e','πCat':'#38bdf8','SS':'#ef4444','XB':'#06b6d4','vdW':'#c084fc'};
-function ppiFindPair(net,a,b){return net.pairs.find(p=>(p.a===a&&p.b===b)||(p.a===b&&p.b===a))}
-function ppiSafeName(s){return String(s).replace(/[\\/:*?"<>|\s]+/g,'_')}
-// 场景渲染：chains=全不透明突出的链；pairList=需要画界面棒状+虚线+标签的链对；无关链幽灵灰垫底
-function ppiRenderEvidenceScene(chains,pairList){
-  restorePpiCoords();
-  viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
-  const bg=$('bg-ppi').value;viewer3d.setBackgroundColor(bg);
-  const dark=bg!=='white';
-  const rad=num('rad-ppi',0.16),lw=num('lw-ppi',3),resStickR=rad*0.7;
-  viewer3d.setStyle({model:ppiModel,hetflag:false},{cartoon:{color:'#64748b',opacity:0.10,arrows:true,style:'rectangle',thickness:0.4}});
-  chains.forEach(ch=>{viewer3d.setStyle({model:ppiModel,chain:ch,hetflag:false},{cartoon:{color:ppiChainColors[ch]||'#5FB98F',opacity:1,arrows:true,style:'rectangle',thickness:0.4}})});
-  const focusAtoms=[];
-  pairList.forEach(p=>{
-    const byChain={};
-    (p.stats.ifaceKeys||[]).forEach(k=>{const ps=k.split('|');(byChain[ps[0]]=byChain[ps[0]]||[]).push(+ps[1])});
-    Object.entries(byChain).forEach(([c,resis])=>{
-      const col=ppiChainColors[c]||'#5FB98F';
-      const cart={color:col,opacity:1,arrows:true,style:'rectangle',thickness:0.4};
-      viewer3d.setStyle({model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false,elem:['N','O','S']},{cartoon:cart,stick:{radius:resStickR,colorscheme:'Jmol'}});
-      viewer3d.setStyle({model:ppiModel,chain:c==='_'?'':c,resi:resis,hetflag:false,elem:'C'},{cartoon:cart,stick:{radius:resStickR,color:'#9aa7b4'}});
-      resis.forEach(r=>atomsOfResidue(ppiModel,c,r).forEach(a=>focusAtoms.push(a)));
-    });
-    (p.stats.ixns||[]).forEach(ix=>{
-      const col=ix.color||IXN_COLORS[ix.type]||'#e2e8f0';
-      if(ix.type==='SS')viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:lw*0.04,color:col,fromCap:1,toCap:1});
-      else viewer3d.addCylinder({start:ix.p1,end:ix.p2,radius:lw*0.032,dashed:true,color:col,fromCap:1,toCap:1});
-      if(ix.sph)ix.sph.forEach(s2=>viewer3d.addSphere({center:s2.c,radius:s2.r,color:s2.color}));
-    });
-  });
-  // 界面残基标签（带链名，与主视图同风格）
-  const lcol=dark?'#e2e8f0':'#0f172a',lbg=dark?'#0f172a':'#ffffff',fs=num('lsize-ppi',11);
-  const labeled=new Set();
-  pairList.forEach(p=>{(p.stats.ifaceKeys||[]).forEach(k=>{
-    if(labeled.has(k))return;labeled.add(k);
-    const ps=k.split('|');const atoms=atomsOfResidue(ppiModel,ps[0],+ps[1]);
-    const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];
-    if(ca)viewer3d.addLabel(chainTag(ps[0])+':'+ps[2]+ps[1],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true});
-  })});
-  if(focusAtoms.length){
-    const serials=focusAtoms.map(a=>a.serial).filter(s=>typeof s==='number');
-    if(serials.length===focusAtoms.length)viewer3d.zoomTo({serial:serials});
-    else viewer3d.zoomTo({model:ppiModel});
-  }else viewer3d.zoomTo({model:ppiModel});
-  viewer3d.render();
-}
-function downloadSvgPng(svgEl,name,scale){
-  return new Promise(res=>{
-    try{
-      const xml=new XMLSerializer().serializeToString(svgEl);
-      const img=new Image();
-      img.onload=()=>{
-        try{
-          const vb=svgEl.viewBox&&svgEl.viewBox.baseVal;
-          const w=vb&&vb.width?vb.width:260,h=vb&&vb.height?vb.height:210;
-          const cv=document.createElement('canvas');cv.width=Math.round(w*scale);cv.height=Math.round(h*scale);
-          const ctx=cv.getContext('2d');ctx.fillStyle='#0b1220';ctx.fillRect(0,0,cv.width,cv.height);
-          ctx.drawImage(img,0,0,cv.width,cv.height);
-          const a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download=name;a.click();
-        }catch(e){}
-        res();
-      };
-      img.onerror=()=>res();
-      img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(xml)));
-    }catch(e){res()}
-  });
-}
-async function ppiExportEvidenceImages(){
-  if(!ppiModel){alert('请先载入结构');return}
-  const net=ppiPairNet;if(!net){alert('请先运行两两互作分析');return}
-  const shots=[];
-  shots.push({name:'概览_全链',chains:net.chains.slice(),pairList:[]});
-  net.pairs.filter(p=>p.direct).forEach(p=>shots.push({name:(p.verdict.level==='high'?'直接互作_高置信_':'直接互作_中置信_')+chainTag(p.a)+'-'+chainTag(p.b),chains:[p.a,p.b],pairList:[p]}));
-  net.pairs.filter(p=>p.verdict.level==='lowconf').forEach(p=>shots.push({name:'低置信接触_无序区_'+chainTag(p.a)+'-'+chainTag(p.b),chains:[p.a,p.b],pairList:[p]}));
-  net.indirect.forEach(x=>{
-    const pl=[];
-    x.via.forEach(v=>{const p1=ppiFindPair(net,x.a,v),p2=ppiFindPair(net,x.b,v);if(p1&&!pl.includes(p1))pl.push(p1);if(p2&&!pl.includes(p2))pl.push(p2)});
-    shots.push({name:'桥梁_'+x.via.map(chainTag).join('-')+'_介导_'+chainTag(x.a)+'-'+chainTag(x.b),chains:[...new Set([x.a,...x.via,x.b])],pairList:pl});
-  });
-  showBusy('正在生成结论配图 0/'+shots.length+' …');
-  const savedView=(()=>{try{return viewer3d.getView()}catch(e){return null}})();
-  try{
-    for(let i=0;i<shots.length;i++){
-      const s=shots[i];
-      ppiRenderEvidenceScene(s.chains,s.pairList);
-      await uiTick();await uiTick();
-      const a=document.createElement('a');a.href=hiResURI(viewer3d,3);a.download=ppiSafeName('PPI_结论配图_'+s.name)+'.png';a.click();
-      showBusy('正在生成结论配图 '+(i+1)+'/'+shots.length+' …');
-      await uiTick();
-    }
-    const svgEl=$('pairNetSvg')?$('pairNetSvg').querySelector('svg'):null;
-    if(svgEl)await downloadSvgPng(svgEl,'PPI_结论配图_互作网络图.png',3);
-  }catch(e){alert('配图生成失败: '+e.message)}
-  // 复原用户视角与样式（证据场景不应用爆炸视图偏移，展示真实接触几何）
-  if(savedView){try{viewer3d.setView(savedView)}catch(e){}}
-  ppiDrawKey='';renderPPI();
-  hideBusy();
 }
 function renderPPI(){
   if(!ppiModel||currentTab!=='ppi')return;
