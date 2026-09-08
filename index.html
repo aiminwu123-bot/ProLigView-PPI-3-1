@@ -753,7 +753,13 @@ async function exportGifRun(){
   };
   try{
     if(gifBg)viewer3d.setBackgroundColor(gifBg); // GIF 默认白底
-    if(axisMode==='model'){const zv=viewer3d.getView();viewer3d.zoomTo({},zv[4]);} // 保持缩放，把模型中心对准画面中心（旋转轴过模型中心）
+    if(axisMode==='model'){
+      // 旋转轴过模型中心：zoomTo 会把模型中心对准画面中心但自动改缩放，
+      // 因此随后把 getView 第 4 位（相机距离=缩放）改回原值，保持用户当前大小
+      const z0=viewer3d.getView();
+      viewer3d.zoomTo({});
+      const z1=viewer3d.getView();z1[3]=z0[3];viewer3d.setView(z1);
+    }
     const src=viewer3d.getCanvas();
     const scale=Math.min(1,maxSide/Math.max(src.width,src.height,1));
     const cv=document.createElement('canvas');cv.width=Math.max(2,Math.round(src.width*scale));cv.height=Math.max(2,Math.round(src.height*scale));
@@ -764,10 +770,11 @@ async function exportGifRun(){
       viewer3d.render();
       ctx.drawImage(viewer3d.getCanvas(),0,0,cv.width,cv.height);
       gif.addFrame(ctx,{copy:true,delay:delay});
-      // 左乘增量旋转 → 在观察坐标系中绕屏幕竖直轴转；平移不动 → 旋转中心固定
+      // 3Dmol 视图数组 = [px,py,pz,相机距离, qx,qy,qz,qw]：四元数在 4-7 位。
+      // 左乘增量旋转 → 在观察坐标系中绕屏幕竖直轴转；模型位移(0-2位)不动 → 旋转中心固定在画面中心
       const v=viewer3d.getView();
-      const q=quatMul(dq,[v[0],v[1],v[2],v[3]]);
-      v[0]=q[0];v[1]=q[1];v[2]=q[2];v[3]=q[3];
+      const q=quatMul(dq,[v[4],v[5],v[6],v[7]]);
+      v[4]=q[0];v[5]=q[1];v[6]=q[2];v[7]=q[3];
       viewer3d.setView(v);
       await uiTick();
     }
