@@ -298,6 +298,17 @@ input[type="text"]{width:100%}
     </div>
   </div>
   <div class="panel open">
+    <div class="panel-head" onclick="togglePanel(this.parentElement)"><b>多链互作网络（≥3 链）</b><span class="arrow">▶</span></div>
+    <div class="panel-body">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">对全部链（不受受体/配体角色限制）做两两互作分析，识别直接互作、桥梁链与间接互作；口径同上方阈值与开关</div>
+      <button class="btn btn-sm" onclick="ppiRunPairwise()">运行两两互作分析</button>
+      <div id="pairNetSvg" style="margin-top:8px"></div>
+      <div id="pairTableWrap" style="max-height:200px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px;display:none"></div>
+      <div id="pairNetSummary" style="font-size:11.5px;line-height:1.7;color:#cbd5e1;margin-top:8px"></div>
+      <button class="btn btn-sm btn-secondary" id="btnPairExport" onclick="exportPairwiseTxt()" style="margin-top:8px;display:none">导出多链网络报告 (TXT，含 SCI 结果描述)</button>
+    </div>
+  </div>
+  <div class="panel open">
     <div class="panel-head" onclick="togglePanel(this.parentElement)"><b>分析结论</b><span class="arrow">▶</span></div>
     <div class="panel-body">
       <div id="conclusion-ppi" style="font-size:11.5px;line-height:1.7;color:#cbd5e1">载入结构并设定互作链后自动生成结论</div>
@@ -847,6 +858,7 @@ function ppiLoad(f){
     ppiChainColors={};ppiChains.forEach((ch,i)=>{ppiChainColors[ch]=PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]});
     ppiChainNames={};
     ppiCacheKey='';ppiDrawKey='';
+    ppiPairNet=null;const _ps=$('pairNetSvg');if(_ps)_ps.innerHTML='';const _pt=$('pairTableWrap');if(_pt){_pt.style.display='none';_pt.innerHTML=''}const _pm=$('pairNetSummary');if(_pm)_pm.innerHTML='';const _pe=$('btnPairExport');if(_pe)_pe.style.display='none';
     ppiBuildChainUI();
     $('hint').style.display='none';
     $('floatInfo').style.display='block';
@@ -967,6 +979,12 @@ function computePPI(){
   };
   let recH=nativeH.filter(h=>isRec(h)),ligH=nativeH.filter(h=>isLig(h));
   if(usePLDDT){const effSet2=new Set(ppiIfaceArr.filter(bEff));const inEff2=a=>effSet2.has((a.chain||'_')+'|'+a.resi+'|'+a.resn);recH=recH.filter(inEff2);ligH=ligH.filter(inEff2)}
+  ppiDetectAll({recA,ligA,recH,ligH,nativeH,showThisH,addIxn,isLig,collected:ppiIxnData,recTag:recChains[0]||'',ligTag:ligChains[0]||''});
+}
+// ==================== 各类型互作检测（computePPI 与多链两两分析共用） ====================
+// ctx: {recA,ligA,recH,ligH,nativeH,showThisH,addIxn,isLig,collected,recTag,ligTag}
+function ppiDetectAll(ctx){
+  const {recA,ligA,recH,ligH,nativeH,showThisH,addIxn,isLig,collected,recTag,ligTag}=ctx;
   if(on('iHB-ppi')){
     const dmax=num('hb-dist-ppi',3.5),amin=num('hb-angle-ppi',120);
     if(!nativeH.length){
@@ -1005,8 +1023,8 @@ function computePPI(){
     const rr=getProteinRings(recA),lr=getProteinRings(ligA);const cr=getCations(recA),cl=getCations(ligA);
     const catAtom=(c,ch)=>({x:c.x,y:c.y,z:c.z,resn:'CAT',resi:0,chain:ch||'',elem:'N'});
     const test=(r,c,a1,a2)=>{const d=dist(r.c,c);if(d<3||d>dmax)return;const vcn=norm(sub(c,r.c));const cosv=Math.abs(dot(vcn,r.n));const ang=Math.acos(Math.max(0,Math.min(1,cosv)))*180/Math.PI;if(ang>amax)return;const rlig=isLig(r.atoms[0]);addIxn('πCat','#38bdf8',a1,a2,'距'+d.toFixed(1)+'Å 角'+ang.toFixed(0)+'°',d,r.c,c,[{c:r.c,r:.15,color:'#38bdf8',lig:rlig},{c:c,r:.17,color:'#38bdf8',lig:!rlig}])};
-    rr.forEach(r=>cl.forEach(c=>test(r,c,r.atoms[0],catAtom(c,ligChains[0]))));
-    lr.forEach(r=>cr.forEach(c=>test(r,c,r.atoms[0],catAtom(c,recChains[0]))));
+    rr.forEach(r=>cl.forEach(c=>test(r,c,r.atoms[0],catAtom(c,ligTag))));
+    lr.forEach(r=>cr.forEach(c=>test(r,c,r.atoms[0],catAtom(c,recTag))));
   }
   if(on('iSS-ppi')){
     const dmax=num('ss-dist-ppi',2.5);
@@ -1024,13 +1042,190 @@ function computePPI(){
   }
   if(on('iVW-ppi')){
     const buf=num('vw-buffer-ppi',0.5);
-    const seen=new Set(ppiIxnData.map(ix=>pairKey(ix.a1,ix.a2)));
+    const seen=new Set(collected.map(ix=>pairKey(ix.a1,ix.a2)));
     neighborPairs(recA,ligA,5.5+buf,(a,b,d)=>{
       const r1=vdW_RADII[(a.elem||'C').toUpperCase()]||1.7,r2=vdW_RADII[(b.elem||'C').toUpperCase()]||1.7;
       if(d>r1+r2+buf||d<0.4)return false;
       const k=pairKey(a,b);if(seen.has(k))return false;seen.add(k);return true;
     }).forEach(([a,b,d])=>addIxn('vdW','#c084fc',a,b,'d='+d.toFixed(2)+'Å',d));
   }
+}
+
+// ==================== 多链两两互作网络 ====================
+let ppiPairNet=null;
+// 计算任意两条链之间的互作统计（与主分析同一口径：同阈值、同 pLDDT 过滤、同去重规则）
+function computePairStats(chsA,chsB){
+  const all=ppiModel.selectedAtoms({});const prot=all.filter(a=>!a.hetflag);
+  const inA=a=>chsA.includes(a.chain||'_'),inB=a=>chsB.includes(a.chain||'_');
+  const A0=prot.filter(inA),B0=prot.filter(inB);
+  const ifCut=num('if-dist-ppi',5.0);
+  const ifaceRes=new Set();
+  neighborPairs(A0,B0,ifCut).forEach(([a,b])=>{ifaceRes.add((a.chain||'_')+'|'+a.resi+'|'+a.resn);ifaceRes.add((b.chain||'_')+'|'+b.resi+'|'+b.resn)});
+  const ifaceArr=[...ifaceRes];
+  // 链间最近重原子距离（供"无直接互作"叙述使用）
+  let minD=Infinity;
+  neighborPairs(A0,B0,20,(a,b,d)=>{if(d<minD)minD=d;return false});
+  const resB={};
+  prot.forEach(a=>{if(typeof a.b!=='number')return;const k=(a.chain||'_')+'|'+a.resi+'|'+a.resn;const isCA=(a.atom||'').trim()==='CA';if(!(k in resB)||isCA)resB[k]=a.b});
+  const bEff=k=>typeof resB[k]!=='number'||resB[k]>50;
+  const casB=prot.filter(a=>(a.atom||'').trim()==='CA'&&typeof a.b==='number').map(a=>a.b);
+  const looksPlddt=casB.length>10&&!casB.some(b=>b>100)&&casB.filter(b=>b>70).length/casB.length>0.15;
+  const usePLDDT=on('plddt-ppi')&&looksPlddt;
+  const raw=ifaceArr.length;
+  const core=ifaceArr.filter(k=>typeof resB[k]==='number'&&resB[k]>70).length;
+  const eff=usePLDDT?ifaceArr.filter(bEff).length:raw;
+  let recA=A0,ligA=B0;
+  if(usePLDDT){const effSet=new Set(ifaceArr.filter(bEff));const inEff=a=>effSet.has((a.chain||'_')+'|'+a.resi+'|'+a.resn);recA=A0.filter(inEff);ligA=B0.filter(inEff)}
+  const nativeH=all.filter(isHydrogen);const heavy=all.filter(isHeavy);
+  const hmode=$('hmode-ppi')?$('hmode-ppi').value:'polar';
+  const polarHSet=new Set();
+  nativeH.forEach(h=>{const p=nearestHeavy(h,heavy);if(p&&['N','O','S'].includes((p.elem||'').toUpperCase()))polarHSet.add(h.index??h.serial??h)});
+  const showThisH=h=>hmode==='all'?true:hmode==='none'?false:polarHSet.has(h.index??h.serial??h);
+  let recH=nativeH.filter(inA),ligH=nativeH.filter(inB);
+  if(usePLDDT){const effSet2=new Set(ifaceArr.filter(bEff));const inEff2=a=>effSet2.has((a.chain||'_')+'|'+a.resi+'|'+a.resn);recH=recH.filter(inEff2);ligH=ligH.filter(inEff2)}
+  const collected=[];
+  const seenRP=new Set();
+  const addIxn=(type,color,a1,a2,detail,score)=>{
+    if(type==='HB'||type==='HY'||type==='vdW'){
+      const k=type+'|'+(a1.chain||'_')+'|'+(a1.resi??'')+'|'+(a2.chain||'_')+'|'+(a2.resi??'');
+      if(seenRP.has(k))return;seenRP.add(k);
+    }
+    collected.push({type,score,a1,a2});
+  };
+  ppiDetectAll({recA,ligA,recH,ligH,nativeH,showThisH,addIxn,isLig:inB,collected,recTag:chsA[0],ligTag:chsB[0]});
+  const counts={HB:0,SB:0,HY:0,'ππ':0,'πCat':0,SS:0,XB:0,vdW:0};
+  collected.forEach(ix=>{counts[ix.type]=(counts[ix.type]||0)+1});
+  const bsa=on('bsa-ppi')?calcBSA(A0,B0):null;
+  return{raw,eff,core,counts,total:collected.length,bsa,minD:isFinite(minD)?minD:null};
+}
+// 与「分析结论」同一判定口径：高=有效界面≥12 且特异性互作≥2 且 BSA≥500Å²；中=特异性≥1 且（界面≥4 或 BSA≥200Å²）
+function pairVerdict(s){
+  const strong=s.counts.HB+s.counts.SB+s.counts['ππ']+s.counts['πCat']+s.counts.SS+s.counts.XB;
+  if(s.eff>=12&&strong>=2&&(s.bsa===null||s.bsa>=500))return{level:'high',strong};
+  if(strong>=1&&(s.eff>=4||(s.bsa!==null&&s.bsa>=200)))return{level:'medium',strong};
+  return{level:'none',strong};
+}
+function ppiRunPairwise(){
+  if(!ppiModel||ppiChains.length<3){alert('请先载入包含 3 条及以上链的结构');return}
+  const pairs=[];
+  for(let i=0;i<ppiChains.length;i++)for(let j=i+1;j<ppiChains.length;j++){
+    const a=ppiChains[i],b=ppiChains[j];
+    const stats=computePairStats([a],[b]);
+    const v=pairVerdict(stats);
+    pairs.push({a,b,stats,verdict:v,direct:v.level!=='none'});
+  }
+  // 图分析：度、桥梁（两跳的公共邻居=桥接者）、间接互作、孤立链
+  const deg={};ppiChains.forEach(c=>deg[c]=0);
+  const nbr={};ppiChains.forEach(c=>nbr[c]=new Set());
+  pairs.filter(p=>p.direct).forEach(p=>{deg[p.a]++;deg[p.b]++;nbr[p.a].add(p.b);nbr[p.b].add(p.a)});
+  const indirect=[];
+  pairs.filter(p=>!p.direct).forEach(p=>{
+    const via=[...nbr[p.a]].filter(x=>nbr[p.b].has(x));
+    if(via.length)indirect.push({a:p.a,b:p.b,via,minD:p.stats.minD});
+  });
+  const bridgeChains=[...new Set(indirect.flatMap(x=>x.via))];
+  const isolated=ppiChains.filter(c=>deg[c]===0);
+  ppiPairNet={pairs,deg,indirect,bridgeChains,isolated,chains:ppiChains.slice()};
+  ppiRenderPairNet();
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function ppiRenderPairNet(){
+  const net=ppiPairNet;if(!net)return;
+  const {pairs,indirect,bridgeChains,isolated,chains}=net;
+  const direct=pairs.filter(p=>p.direct);
+  // —— 环形网络图（SVG）——
+  const W=260,H=210,cx0=W/2,cy0=H/2,R=Math.min(W,H)/2-36;
+  const posOf={};chains.forEach((c,i)=>{const ang=-Math.PI/2+i*2*Math.PI/chains.length;posOf[c]={x:cx0+R*Math.cos(ang),y:cy0+R*Math.sin(ang)}});
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;background:#0b1220;border:1px solid #1e293b;border-radius:8px">';
+  direct.forEach(p=>{
+    const A=posOf[p.a],B=posOf[p.b];const high=p.verdict.level==='high';
+    svg+='<line x1="'+A.x.toFixed(1)+'" y1="'+A.y.toFixed(1)+'" x2="'+B.x.toFixed(1)+'" y2="'+B.y.toFixed(1)+'" stroke="'+(high?'#22d3ee':'#94a3b8')+'" stroke-width="'+(high?3:1.5)+'" stroke-opacity="0.85"><title>'+escHtml(chainDisp(p.a))+' ↔ '+escHtml(chainDisp(p.b))+'（'+(high?'高可信度':'中等')+'，界面 '+p.stats.eff+' 残基）</title></line>';
+  });
+  chains.forEach(c=>{
+    const P=posOf[c];const col=ppiChainColors[c]||'#5FB98F';const isBridge=bridgeChains.includes(c);
+    if(isBridge)svg+='<circle cx="'+P.x.toFixed(1)+'" cy="'+P.y.toFixed(1)+'" r="16.5" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="3 3"><title>桥梁链</title></circle>';
+    svg+='<circle cx="'+P.x.toFixed(1)+'" cy="'+P.y.toFixed(1)+'" r="12" fill="'+col+'" fill-opacity="0.92" stroke="#0f172a" stroke-width="1.5"/>';
+    svg+='<text x="'+P.x.toFixed(1)+'" y="'+(P.y+3.5).toFixed(1)+'" text-anchor="middle" font-size="8.5" font-weight="700" fill="#0f172a">'+escHtml(chainTag(c).slice(0,6))+'</text>';
+  });
+  svg+='</svg>';
+  $('pairNetSvg').innerHTML=svg+'<div style="font-size:10px;color:#64748b;margin-top:3px">实线=直接互作（粗=高可信度，细=中等）；橙色虚线圈=桥梁链；孤立点=未检出互作</div>';
+  // —— 两两统计表 ——
+  const wrap=$('pairTableWrap');wrap.style.display='';
+  let html='<table class="ixn-table"><thead><tr><th>链对</th><th>界面残基</th><th>特异性</th><th>接触对</th><th>BSA</th><th>判定</th></tr></thead><tbody>';
+  pairs.forEach(p=>{
+    const s=p.stats;
+    const vtxt=p.verdict.level==='high'?'<span style="color:#22d3ee">直接·高</span>':(p.verdict.level==='medium'?'<span style="color:#f59e0b">直接·中</span>':'<span style="color:#64748b">无直接</span>');
+    html+='<tr><td>'+escHtml(chainTag(p.a))+' ↔ '+escHtml(chainTag(p.b))+'</td><td>'+s.eff+'/'+s.raw+'</td><td>'+p.verdict.strong+'</td><td>'+s.total+'</td><td>'+(s.bsa!==null?Math.round(s.bsa):'—')+'</td><td>'+vtxt+'</td></tr>';
+  });
+  html+='</tbody></table>';wrap.innerHTML=html;
+  // —— 网络结论 ——
+  let s='';
+  s+='<b style="color:#22d3ee">直接互作 '+direct.length+' 对</b>：'+(direct.length?direct.map(p=>escHtml(chainDisp(p.a))+' ↔ '+escHtml(chainDisp(p.b))+(p.verdict.level==='high'?'（高）':'（中）')).join('；'):'无')+'<br>';
+  if(bridgeChains.length)s+='<b style="color:#f59e0b">桥梁链</b>：'+bridgeChains.map(c=>escHtml(chainDisp(c))).join('、')+'<br>';
+  if(indirect.length)s+='<b style="color:#c084fc">间接互作</b>：'+indirect.map(x=>escHtml(chainDisp(x.a))+' ↔ '+escHtml(chainDisp(x.b))+'（经 '+x.via.map(c=>escHtml(chainTag(c))).join('/')+' 桥接'+(x.minD!==null?'，最近距离 '+x.minD.toFixed(1)+' Å':'')+'）').join('；')+'<br>';
+  if(isolated.length)s+='<b style="color:#64748b">未参与互作</b>：'+isolated.map(c=>escHtml(chainDisp(c))).join('、')+'<br>';
+  if(!indirect.length&&!isolated.length&&direct.length===pairs.length)s+='<span style="color:#94a3b8">所有链两两均存在直接互作（全连接网络）。</span><br>';
+  s+='<span style="color:#64748b;font-size:10px">判定口径与「分析结论」一致：高=有效界面≥12 且特异性互作≥2 且 BSA≥500Å²；中=特异性≥1 且（界面≥4 或 BSA≥200Å²）。修改阈值后请重新运行。</span>';
+  $('pairNetSummary').innerHTML=s;
+  $('btnPairExport').style.display='inline-block';
+}
+// —— SCI 风格结果描述（英文 + 中文）——
+function buildPairSciText(net){
+  const {pairs,chains,indirect,bridgeChains,isolated}=net;
+  const direct=pairs.filter(p=>p.direct);
+  const ifCut=num('if-dist-ppi',5.0);
+  const pld=on('plddt-ppi');
+  const enName=c=>{const n=(ppiChainNames[c]||'').trim();return n?n+' (chain '+c+')':'chain '+c};
+  const cap=s=>s.replace(/^./,ch=>ch.toUpperCase());
+  const specEn=s=>{const parts=[];const push=(n,sin)=>{if(n)parts.push(n+' '+sin+(n>1?'s':''))};push(s.counts.HB,'hydrogen bond');push(s.counts.SB,'salt bridge');push(s.counts.HY,'hydrophobic contact');push(s.counts['ππ'],'π–π stacking interaction');push(s.counts['πCat'],'π–cation interaction');push(s.counts.SS,'disulfide bond');push(s.counts.XB,'halogen bond');return parts.length?parts.join(', '):'no detectable specific contacts'};
+  const specCn=s=>{const parts=[];[['HB','氢键'],['SB','盐桥'],['HY','疏水接触'],['ππ','π-π 堆积'],['πCat','π-阳离子互作'],['SS','二硫键'],['XB','卤键']].forEach(([t,n])=>{if(s.counts[t])parts.push(s.counts[t]+' 对'+n)});return parts.length?parts.join('、'):'未检出特异性接触'};
+  const levelEn={high:'high-confidence',medium:'moderate-confidence'};
+  const levelCn={high:'高可信度',medium:'中等可信度'};
+  let en='Pairwise inter-chain interface analysis was performed across all '+chains.length+' chains (chains '+chains.join(', ')+') using a residue-level heavy-atom contact cutoff of '+ifCut+' Å'+(pld?', with pLDDT-based confidence filtering (interface residues with pLDDT > 50 retained; pLDDT > 70 defined as core interface residues)':'')+'. ';
+  direct.forEach(p=>{const s=p.stats;en+='The '+enName(p.a)+'–'+enName(p.b)+' interface comprised '+s.eff+' interface residues (buried surface area, BSA = '+(s.bsa!==null?Math.round(s.bsa)+' Å²':'not computed')+'), stabilized by '+specEn(s)+', consistent with a '+levelEn[p.verdict.level]+' direct interaction. '});
+  pairs.filter(p=>!p.direct).forEach(p=>{en+='No significant direct contact was observed between '+enName(p.a)+' and '+enName(p.b)+(p.stats.minD!==null?' (minimum inter-chain heavy-atom distance ≈ '+p.stats.minD.toFixed(1)+' Å)':'')+'. '});
+  indirect.forEach(x=>{en+='Notably, '+x.via.map(enName).join(' and ')+' formed direct interfaces with both '+enName(x.a)+' and '+enName(x.b)+', indicating that '+x.via.map(enName).join('/')+' acts as a bridging (adaptor) subunit that mediates an indirect interaction between '+enName(x.a)+' and '+enName(x.b)+'. '});
+  isolated.forEach(c=>{en+=cap(enName(c))+' showed no detectable direct interaction with any other chain, suggesting that it does not participate in the inter-subunit interface network. '});
+  if(bridgeChains.length)en+='Taken together, these results suggest an organized multi-subunit architecture in which '+bridgeChains.map(enName).join(' and ')+' occupies a central, scaffold-like position within the interaction network. ';
+  en+='(Automated geometry-based assessment; experimental validation is recommended.)';
+  let cn='对全部 '+chains.length+' 条链（'+chains.map(c=>chainDisp(c)).join('、')+'）进行了两两界面分析（残基级重原子接触 ≤'+ifCut+' Å'+(pld?'，并经 pLDDT 置信度过滤：保留 pLDDT>50 的界面残基，pLDDT>70 定义为核心残基':'')+'）。';
+  direct.forEach(p=>{const s=p.stats;cn+=chainDisp(p.a)+' 与 '+chainDisp(p.b)+' 之间形成含 '+s.eff+' 个界面残基的直接界面（埋藏表面积 BSA = '+(s.bsa!==null?Math.round(s.bsa)+' Å²':'未计算')+'），由'+specCn(s)+'维系，判定为'+levelCn[p.verdict.level]+'直接互作。'});
+  pairs.filter(p=>!p.direct).forEach(p=>{cn+=chainDisp(p.a)+' 与 '+chainDisp(p.b)+' 之间未检出显著直接接触'+(p.stats.minD!==null?'（最近链间重原子距离 ≈'+p.stats.minD.toFixed(1)+' Å）':'')+'。'});
+  indirect.forEach(x=>{cn+='值得注意的是，'+x.via.map(c=>chainDisp(c)).join('、')+' 同时与 '+chainDisp(x.a)+' 和 '+chainDisp(x.b)+' 形成直接界面，提示其作为桥梁（衔接）亚基介导了 '+chainDisp(x.a)+' 与 '+chainDisp(x.b)+' 之间的间接互作。'});
+  isolated.forEach(c=>{cn+=chainDisp(c)+' 未与任何其他链检出直接互作，提示其不参与亚基间界面网络。'});
+  if(bridgeChains.length)cn+='综上，该复合体呈现出以 '+bridgeChains.map(c=>chainDisp(c)).join('、')+' 为中枢（支架样）亚基的多亚基组织方式。';
+  cn+='（基于几何规则的自动化评估，结论需结合实验数据验证。）';
+  return {en,cn};
+}
+function exportPairwiseTxt(){
+  const net=ppiPairNet;if(!net){alert('请先运行两两互作分析');return}
+  const {en,cn}=buildPairSciText(net);
+  const direct=net.pairs.filter(p=>p.direct);
+  const L=[];
+  L.push('========== ProLigView 多链互作网络分析报告 ==========');
+  L.push('生成时间: '+new Date().toLocaleString());
+  L.push('链数: '+net.chains.length+'（'+net.chains.map(c=>chainDisp(c)).join('、')+'）');
+  L.push('统一口径: 界面=链间重原子 ≤'+num('if-dist-ppi',5.0)+'Å（残基级）；pLDDT>50 过滤'+(on('plddt-ppi')?'开启':'关闭')+'；互作按残基对去重计数');
+  L.push('');
+  L.push('[两两互作统计]');
+  L.push('链对\t界面残基(有效/原始)\t核心\t特异性互作\t接触对\tBSA(Å²)\t最近距离(Å)\t判定');
+  net.pairs.forEach(p=>{const s=p.stats;L.push(chainTag(p.a)+'↔'+chainTag(p.b)+'\t'+s.eff+'/'+s.raw+'\t'+s.core+'\t'+p.verdict.strong+'\t'+s.total+'\t'+(s.bsa!==null?Math.round(s.bsa):'—')+'\t'+(s.minD!==null?s.minD.toFixed(2):'—')+'\t'+(p.verdict.level==='high'?'直接·高':p.verdict.level==='medium'?'直接·中':'无直接'))});
+  L.push('');
+  L.push('[网络结论]');
+  L.push('直接互作: '+(direct.length?direct.map(p=>chainDisp(p.a)+' ↔ '+chainDisp(p.b)+(p.verdict.level==='high'?'（高可信度）':'（中等）')).join('；'):'无'));
+  L.push('桥梁链: '+(net.bridgeChains.length?net.bridgeChains.map(c=>chainDisp(c)).join('、'):'无'));
+  L.push('间接互作: '+(net.indirect.length?net.indirect.map(x=>chainDisp(x.a)+' ↔ '+chainDisp(x.b)+'（经 '+x.via.map(chainTag).join('/')+' 桥接）').join('；'):'无'));
+  L.push('未参与互作: '+(net.isolated.length?net.isolated.map(c=>chainDisp(c)).join('、'):'无'));
+  L.push('');
+  L.push('[SCI Results 描述 (English)]');
+  L.push(en);
+  L.push('');
+  L.push('[中文结果描述]');
+  L.push(cn);
+  L.push('');
+  L.push('注: 本报告为基于几何规则的自动化评估，仅供参考，需结合实验数据验证。');
+  const blob=new Blob([L.join('\n')],{type:'text/plain;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='PPI_多链互作网络报告.txt';a.click();URL.revokeObjectURL(url);
 }
 function renderPPI(){
   if(!ppiModel||currentTab!=='ppi')return;
