@@ -660,19 +660,27 @@ function switchTab(tab){
 }
 
 function togglePanel(panel){ panel.classList.toggle('open'); }
-// 高分辨率导出：临时放大视口再截图（3 倍像素），随后恢复原尺寸
+// 高分辨率导出：临时提升 devicePixelRatio（容器尺寸不变，视野与标签比例与屏幕完全一致），随后恢复
 function hiResURI(v,scale){
+  let origDesc;
   try{
     const cv=v.getCanvas();const holder=cv.parentElement;
     const w=holder.clientWidth,h=holder.clientHeight;
     if(!w||!h)return v.pngURI();
-    const ow=holder.style.width,oh=holder.style.height;
-    holder.style.width=(w*scale)+'px';holder.style.height=(h*scale)+'px';
+    origDesc=Object.getOwnPropertyDescriptor(window,'devicePixelRatio');
+    const nativeDpr=window.devicePixelRatio||1;
+    let target=Math.max(nativeDpr,2)*scale;
+    const maxSide=4096; // 防爆显存：限制导出最长边
+    const cur=Math.max(w,h)*target;
+    if(cur>maxSide)target*=maxSide/cur;
+    Object.defineProperty(window,'devicePixelRatio',{configurable:true,get:()=>target});
     v.resize();v.render();
-    const uri=v.pngURI();
-    holder.style.width=ow;holder.style.height=oh;v.resize();v.render();
-    return uri;
+    return v.pngURI();
   }catch(e){ console.warn('高分辨率导出失败，退回原始分辨率',e); return v.pngURI(); }
+  finally{
+    try{ if(origDesc) Object.defineProperty(window,'devicePixelRatio',origDesc); else delete window.devicePixelRatio; }catch(_){}
+    try{ v.resize();v.render(); }catch(_){}
+  }
 }
 function exportPng(){
   if(!viewer3d) return;
