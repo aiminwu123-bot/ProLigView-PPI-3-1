@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ProLigView — 蛋白互作分析套件</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+<script src="gif.js"></script>
 <style>
 *{box-sizing:border-box}
 html,body,#app{height:100%;margin:0;font-family:"Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden}
@@ -715,7 +715,7 @@ async function exportGif(){
     const scale=Math.min(1,maxSide/Math.max(src.width,src.height,1));
     const cv=document.createElement('canvas');cv.width=Math.max(2,Math.round(src.width*scale));cv.height=Math.max(2,Math.round(src.height*scale));
     const ctx=cv.getContext('2d');
-    const gif=new GIF({workers:2,quality:10,workerScript:'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js',width:cv.width,height:cv.height});
+    const gif=new GIF({workers:2,quality:10,workerScript:'gif.worker.js',width:cv.width,height:cv.height});
     for(let i=0;i<frames;i++){
       showBusy('正在采集 GIF 帧 '+(i+1)+'/'+frames+' …');
       viewer3d.render();
