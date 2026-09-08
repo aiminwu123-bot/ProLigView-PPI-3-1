@@ -180,6 +180,20 @@ input[type="text"]{width:100%}
     <div class="gate-tip">仅限实验室授权成员访问</div>
   </div>
 </div>
+<div id="gifModal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:99999;align-items:center;justify-content:center">
+  <div style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:18px 20px;width:290px;color:#e2e8f0;font-size:12.5px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">导出旋转 GIF 设置</div>
+    <div class="row"><span>帧数</span><select id="gifFrames"><option value="24">24（快/文件小）</option><option value="36" selected>36（标准）</option><option value="48">48（流畅）</option><option value="60">60（超流畅）</option></select></div>
+    <div class="row"><span>尺寸</span><select id="gifSize"><option value="360">360 px</option><option value="480" selected>480 px</option><option value="640">640 px</option></select></div>
+    <div class="row"><span>速度</span><select id="gifDelay"><option value="70">快</option><option value="110" selected>标准</option><option value="160">慢</option></select></div>
+    <div class="row"><span>背景</span><select id="gifBg"><option value="white" selected>白色（默认）</option><option value="">跟随当前</option></select></div>
+    <div class="row"><span>旋转轴</span><select id="gifAxis"><option value="view" selected>屏幕竖直 · 过画面中心</option><option value="model">屏幕竖直 · 过模型中心</option></select></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn" style="flex:1" onclick="exportGifRun()">开始导出</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="$('gifModal').style.display='none'">取消</button>
+    </div>
+  </div>
+</div>
 <div id="app">
   <div class="top-nav">
     <div class="nav-tab active" data-tab="ppi" onclick="switchTab('ppi')">PPI 分析</div>
@@ -703,14 +717,43 @@ function exportPng(){
   const a=document.createElement('a'); a.href=hiResURI(viewer3d,S); a.download='ProLigView_'+currentTab+'.png'; a.click();
 }
 
-// 导出旋转 GIF：绕竖直轴匀速旋转一周（36 帧 ≈ 3.2s 循环），帧图缩到最长边 480px 控制文件体积
-async function exportGif(){
+// 四元数乘法（a∘b，[x,y,z,w] 格式，与 3Dmol getView 一致）
+function quatMul(a,b){
+  return [
+    a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],
+    a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+    a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
+    a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]
+  ];
+}
+// 导出旋转 GIF：始终以"屏幕竖直方向"为轴匀速转一周（转台效果），帧数/尺寸/速度/背景/旋转轴可选
+function exportGif(){
   if(!viewer3d)return;
   if(currentTab==='align'&&on('sideBySide')&&alignViewerWT&&alignViewerMut){alert('并排对比模式暂不支持 GIF，请先关闭并排对比再导出');return}
-  if(typeof GIF==='undefined'){alert('GIF 编码器未加载成功（gif.js 需联网加载），请检查网络后刷新页面重试');return}
-  const frames=36,step=360/frames,delay=90,maxSide=480;
+  if(typeof GIF==='undefined'){alert('GIF 编码器未加载成功（gif.js 未就绪），请刷新页面重试');return}
+  $('gifModal').style.display='flex';
+}
+async function exportGifRun(){
+  $('gifModal').style.display='none';
+  const frames=parseInt(($('gifFrames')||{}).value,10)||36;
+  const maxSide=parseInt(($('gifSize')||{}).value,10)||480;
+  const delay=parseInt(($('gifDelay')||{}).value,10)||110;
+  const gifBg=($('gifBg')||{}).value||''; // '' = 跟随当前背景
+  const axisMode=($('gifAxis')||{}).value||'view';
+  const step=360/frames;
+  const half=step*Math.PI/360; // 半角（弧度）
+  const dq=[0,Math.sin(half),0,Math.cos(half)]; // 屏幕竖直轴（观察系 +Y）的增量旋转
   const savedView=(()=>{try{return viewer3d.getView()}catch(e){return null}})();
+  const bgSel=$('bg-'+currentTab);
+  const savedBg=bgSel?bgSel.value:'black';
+  const restore=()=>{
+    if(gifBg){try{viewer3d.setBackgroundColor(savedBg)}catch(e){}}
+    if(savedView){try{viewer3d.setView(savedView)}catch(e){}}
+    try{viewer3d.render()}catch(e){}
+  };
   try{
+    if(gifBg)viewer3d.setBackgroundColor(gifBg); // GIF 默认白底
+    if(axisMode==='model'){const zv=viewer3d.getView();viewer3d.zoomTo({},zv[4]);} // 保持缩放，把模型中心对准画面中心（旋转轴过模型中心）
     const src=viewer3d.getCanvas();
     const scale=Math.min(1,maxSide/Math.max(src.width,src.height,1));
     const cv=document.createElement('canvas');cv.width=Math.max(2,Math.round(src.width*scale));cv.height=Math.max(2,Math.round(src.height*scale));
@@ -721,21 +764,23 @@ async function exportGif(){
       viewer3d.render();
       ctx.drawImage(viewer3d.getCanvas(),0,0,cv.width,cv.height);
       gif.addFrame(ctx,{copy:true,delay:delay});
-      viewer3d.rotate(step,'y');
+      // 左乘增量旋转 → 在观察坐标系中绕屏幕竖直轴转；平移不动 → 旋转中心固定
+      const v=viewer3d.getView();
+      const q=quatMul(dq,[v[0],v[1],v[2],v[3]]);
+      v[0]=q[0];v[1]=q[1];v[2]=q[2];v[3]=q[3];
+      viewer3d.setView(v);
       await uiTick();
     }
     showBusy('正在编码 GIF …');
     gif.on('progress',p=>showBusy('正在编码 GIF '+Math.round(p*100)+'% …'));
     gif.on('finished',blob=>{
       const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='ProLigView_旋转展示_'+currentTab+'.gif';a.click();URL.revokeObjectURL(url);
-      if(savedView){try{viewer3d.setView(savedView);viewer3d.render()}catch(e){}}
-      hideBusy();
+      restore();hideBusy();
     });
-    gif.on('abort',()=>{hideBusy();alert('GIF 编码被中断')});
+    gif.on('abort',()=>{restore();hideBusy();alert('GIF 编码被中断')});
     gif.render();
   }catch(e){
-    if(savedView){try{viewer3d.setView(savedView);viewer3d.render()}catch(_){}}
-    hideBusy();alert('GIF 导出失败: '+e.message);
+    restore();hideBusy();alert('GIF 导出失败: '+e.message);
   }
 }
 
