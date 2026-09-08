@@ -90,6 +90,7 @@ input[type="text"]{width:100%}
 .ifacechip{font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid #475569;cursor:pointer;color:#cbd5e1;user-select:none;background:transparent}
 .ifacechip:hover{background:#1e293b}
 .ifacechip.dim{opacity:.32}
+.ifacechip.userhide{opacity:.3;text-decoration:line-through;border-style:dotted}
 .ifacechip.core{font-weight:700;border-width:2px}
 
 .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:8px 0}
@@ -293,7 +294,7 @@ input[type="text"]{width:100%}
         <div class="stat-card"><div class="num" id="stat-bsa-ppi">—</div><div class="label">BSA (Å²)</div></div>
       </div>
       <div id="ixnTableWrap-ppi" style="max-height:220px;overflow-y:auto;margin-top:6px;border:1px solid #1e293b;border-radius:6px"><div class="ixn-empty">暂无互作数据</div></div>
-      <div style="margin-top:8px;font-size:11px;color:#94a3b8"><b>界面残基</b> <span id="ifaceCount-ppi"></span>（点击定位；粗框=核心 pLDDT&gt;70；暗淡=被 pLDDT 过滤）</div>
+      <div style="margin-top:8px;font-size:11px;color:#94a3b8"><b>界面残基</b> <span id="ifaceCount-ppi"></span>（单击定位；双击取消/恢复突出显示；粗框=核心 pLDDT&gt;70；暗淡=被 pLDDT 过滤）<span id="ifaceReset-ppi" style="display:none;color:#38bdf8;cursor:pointer;margin-left:4px" onclick="ppiIfaceReset()">↺ 恢复全部</span></div>
       <div id="ifaceWrap-ppi" style="max-height:130px;overflow-y:auto;margin-top:4px;display:flex;flex-wrap:wrap;gap:3px;align-content:flex-start"></div>
     </div>
   </div>
@@ -857,6 +858,7 @@ function ppiLoad(f){
     ppiChainRoles={};ppiChains.forEach((ch,i)=>{ppiChainRoles[ch]=i===0?'receptor':'ligand'});
     ppiChainColors={};ppiChains.forEach((ch,i)=>{ppiChainColors[ch]=PPI_CHAIN_PALETTE[i%PPI_CHAIN_PALETTE.length]});
     ppiChainNames={};
+    ppiChainResN={};ppiChains.forEach(ch=>{const rs=new Set();all.forEach(a=>{if(!a.hetflag&&(a.chain||'_')===ch)rs.add(a.resi)});ppiChainResN[ch]=rs.size});
     ppiCacheKey='';ppiDrawKey='';
     ppiPairNet=null;const _ps=$('pairNetSvg');if(_ps)_ps.innerHTML='';const _pt=$('pairTableWrap');if(_pt){_pt.style.display='none';_pt.innerHTML=''}const _pm=$('pairNetSummary');if(_pm)_pm.innerHTML='';const _pe=$('btnPairExport');if(_pe)_pe.style.display='none';
     ppiBuildChainUI();
@@ -876,7 +878,7 @@ function ppiBuildChainUI(){
   const crow=$('chainColors-ppi');crow.innerHTML='';
   ppiChains.forEach(ch=>{
     const row=document.createElement('div');row.className='row';row.style.margin='4px 0';
-    const lab=document.createElement('span');lab.style.cssText='font-size:11.5px;color:#cbd5e1';lab.textContent='Chain '+ch;
+    const lab=document.createElement('span');lab.style.cssText='font-size:11.5px;color:#cbd5e1';lab.textContent='Chain '+ch+(ppiChainResN[ch]?' · '+ppiChainResN[ch]+' aa':'');
     const nameInp=document.createElement('input');nameInp.type='text';nameInp.placeholder='命名';nameInp.value=ppiChainNames[ch]||'';
     nameInp.style.cssText='flex:1;min-width:0;background:#0b1220;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:11px;padding:2px 6px;margin:0 6px';
     nameInp.oninput=()=>{ppiChainNames[ch]=nameInp.value;ppiRefreshChainNames()};
@@ -902,6 +904,8 @@ function ppiUpdateStats(){$('nRec-ppi').textContent=ppiChains.filter(c=>ppiChain
 // —— PPI 计算与绘制分离：结构/角色/阈值/开关变化才重算互作；颜色/透明度等仅刷新样式 ——
 let ppiIfaceArr = [], ppiResMap = {}, ppiCacheKey = '', ppiDrawKey = '';
 let ppiIfaceList = [], ppiIfaceDisp = [];
+let ppiIfaceHidden = new Set(), ppiIfaceClickTimer = null;
+let ppiChainResN = {};
 // 爆炸视图（互作链拉开）：保存原始坐标，渲染时恢复→计算→再偏移配体链，计算始终基于原始坐标
 let ppiOrig = null, ppiExplodeVec = null;
 function savePpiOrig(){ if(!ppiModel){ppiOrig=null;return} ppiOrig=ppiModel.selectedAtoms({}).map(a=>({a,x:a.x,y:a.y,z:a.z})); }
@@ -933,7 +937,7 @@ function computePPI(){
   const recChains=ppiChains.filter(c=>ppiChainRoles[c]==='receptor');
   const ligChains=ppiChains.filter(c=>ppiChainRoles[c]==='ligand');
   const isRec=a=>recChains.includes(a.chain||'_');const isLig=a=>ligChains.includes(a.chain||'_');
-  ppiIxnData=[];ppiIfaceArr=[];ppiResMap={};ppiIfaceList=[];ppiIfaceDisp=[];
+  ppiIxnData=[];ppiIfaceArr=[];ppiResMap={};ppiIfaceList=[];ppiIfaceDisp=[];ppiIfaceHidden=new Set();
   prot.forEach(a=>{const k=(a.chain||'_')+'|'+a.resi+'|'+a.resn;(ppiResMap[k]=ppiResMap[k]||[]).push(a)});
   if(!recChains.length||!ligChains.length)return;
   const recA0=prot.filter(a=>isRec(a));const ligA0=prot.filter(a=>isLig(a));
@@ -1248,7 +1252,7 @@ function renderPPI(){
   const pocket=on('pocket-ppi');
   if(focus||pocket){
     const byChain={};
-    ppiIfaceDisp.forEach(k=>{const[c,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
+    ppiIfaceVisible().forEach(k=>{const[c,i]=k.split('|');(byChain[c]=byChain[c]||[]).push(+i)});
     Object.entries(byChain).forEach(([c,resis])=>{
       const col=ppiChainColors[c]||PPI_CHAIN_PALETTE[ppiChains.indexOf(c)%PPI_CHAIN_PALETTE.length];
       const cart={color:col,opacity:ifOp,arrows:true,style:'rectangle',thickness:0.4};
@@ -1262,7 +1266,7 @@ function renderPPI(){
     });
   }
   // 形状与标签只在计算结果或标签参数变化时重建（虚线/标签创建是最大开销）
-  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0)+'|'+num('lw-ppi',3)+'|'+num('sop-ppi',0.72)+'|'+['HB','SB','HY','PP','PC','SS','XB','VW'].map(c=>on('hl-'+c+'-ppi')?1:0).join('')+'|'+num('explode-ppi',0)+'|'+(on('surfcut-ppi')?1:0);
+  const dk=ck+'|'+(on('label-ppi')?1:0)+'|'+num('lsize-ppi',11)+'|'+bg+'|'+(on('surf-ppi')?1:0)+'|'+num('lw-ppi',3)+'|'+num('sop-ppi',0.72)+'|'+['HB','SB','HY','PP','PC','SS','XB','VW'].map(c=>on('hl-'+c+'-ppi')?1:0).join('')+'|'+num('explode-ppi',0)+'|'+(on('surfcut-ppi')?1:0)+'|'+[...ppiIfaceHidden].join(';');
   if(dk!==ppiDrawKey){
     ppiDrawKey=dk;
     viewer3d.removeAllShapes();viewer3d.removeAllLabels();viewer3d.removeAllSurfaces();
@@ -1270,7 +1274,7 @@ function renderPPI(){
       // 表面开窗：界面残基从表面选区中排除，界面卡通/侧链/虚线从窗口中清晰露出
       const cut=on('surfcut-ppi');
       const ifByChain={};
-      if(cut)ppiIfaceDisp.forEach(k=>{const[c,i]=k.split('|');(ifByChain[c]=ifByChain[c]||[]).push(+i)});
+      if(cut)ppiIfaceVisible().forEach(k=>{const[c,i]=k.split('|');(ifByChain[c]=ifByChain[c]||[]).push(+i)});
       ppiChains.forEach((ch,i)=>{
         const sel={model:ppiModel,chain:ch,hetflag:false};
         if(ifByChain[ch]&&ifByChain[ch].length)sel.not={resi:ifByChain[ch]};
@@ -1292,7 +1296,7 @@ function renderPPI(){
     });
     if(on('label-ppi')){
       const lcol=dark?'#e2e8f0':'#0f172a';const lbg=dark?'#0f172a':'#ffffff';const fs=num('lsize-ppi',11);
-      ppiIfaceDisp.forEach(k=>{const atoms=ppiResMap[k]||[];const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];if(ca)viewer3d.addLabel(k.split('|')[1]+k.split('|')[2],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})});
+      ppiIfaceVisible().forEach(k=>{const atoms=ppiResMap[k]||[];const ca=atoms.find(a=>(a.atom||'').trim()==='CA')||atoms[0];if(ca)viewer3d.addLabel(k.split('|')[1]+k.split('|')[2],{position:pos(ca),fontSize:fs,fontColor:lcol,backgroundColor:lbg,backgroundOpacity:.85,borderColor:'#475569',borderThickness:.5,inFront:true})});
     }
   }
   ppiUpdateStatsTable();
@@ -1312,12 +1316,14 @@ function ppiUpdateStatsTable(){
   // 界面残基清单：与 3D 高亮/标签同源（高亮=有效集），可按类型开关的虚线互不影响
   const iw=$('ifaceWrap-ppi');
   if(iw){
+    if($('ifaceReset-ppi'))$('ifaceReset-ppi').style.display=ppiIfaceHidden.size?'inline':'none';
     if(!ppiIfaceList.length){iw.innerHTML='';if($('ifaceCount-ppi'))$('ifaceCount-ppi').textContent=''}
     else{
-      if($('ifaceCount-ppi'))$('ifaceCount-ppi').textContent='（有效 '+ppiIfaceStats.eff+' / 原始 '+ppiIfaceStats.raw+' / 核心 '+ppiIfaceStats.core+'）';
+      if($('ifaceCount-ppi'))$('ifaceCount-ppi').textContent='（有效 '+ppiIfaceStats.eff+' / 原始 '+ppiIfaceStats.raw+' / 核心 '+ppiIfaceStats.core+(ppiIfaceHidden.size?' / 已隐藏 '+ppiIfaceHidden.size:'')+'）';
       iw.innerHTML=ppiIfaceList.map((r,i)=>{
         const col=ppiChainColors[r.chain]||PPI_CHAIN_PALETTE[Math.max(0,ppiChains.indexOf(r.chain))%PPI_CHAIN_PALETTE.length];
-        return '<span class="ifacechip'+(r.eff?'':' dim')+(r.core?' core':'')+'" style="border-color:'+col+'" onclick="ppiFocusIface('+i+')" title="'+chainDisp(r.chain)+' · '+(r.b!==null?'pLDDT '+r.b.toFixed(0):'无 pLDDT')+'">'+chainTag(r.chain)+':'+r.resn+r.resi+'</span>';
+        const hk=r.chain+'|'+r.resi+'|'+r.resn;
+        return '<span class="ifacechip'+(r.eff?'':' dim')+(r.core?' core':'')+(ppiIfaceHidden.has(hk)?' userhide':'')+'" style="border-color:'+col+'" onclick="ppiIfaceClick('+i+')" ondblclick="ppiIfaceToggleHide('+i+')" title="'+chainDisp(r.chain)+' · '+(r.b!==null?'pLDDT '+r.b.toFixed(0):'无 pLDDT')+' · 单击定位，双击取消/恢复突出显示">'+chainTag(r.chain)+':'+r.resn+r.resi+'</span>';
       }).join('');
     }
   }
@@ -1426,6 +1432,11 @@ function zoomToAtoms(atoms){
 }
 function ppiFocusIxn(idx){const ix=ppiIxnData[idx];if(!ix)return;const atoms=atomsOfResidue(ppiModel,ix.a1.chain||'_',ix.a1.resi).concat(atomsOfResidue(ppiModel,ix.a2.chain||'_',ix.a2.resi));zoomToAtoms(atoms)}
 function ppiFocusIface(idx){const r=ppiIfaceList[idx];if(!r)return;zoomToAtoms(atomsOfResidue(ppiModel,r.chain,r.resi))}
+// —— 界面残基自定义突出显示：单击定位，双击取消/恢复高亮 ——
+function ppiIfaceVisible(){return ppiIfaceDisp.filter(k=>!ppiIfaceHidden.has(k))}
+function ppiIfaceClick(i){clearTimeout(ppiIfaceClickTimer);ppiIfaceClickTimer=setTimeout(()=>ppiFocusIface(i),260)}
+function ppiIfaceToggleHide(i){clearTimeout(ppiIfaceClickTimer);const r=ppiIfaceList[i];if(!r)return;const k=r.chain+'|'+r.resi+'|'+r.resn;if(ppiIfaceHidden.has(k))ppiIfaceHidden.delete(k);else ppiIfaceHidden.add(k);renderPPI()}
+function ppiIfaceReset(){ppiIfaceHidden.clear();renderPPI()}
 
 // ==================== Align 模块状态 ====================
 let alignModelWT=null, alignModelMut=null;
